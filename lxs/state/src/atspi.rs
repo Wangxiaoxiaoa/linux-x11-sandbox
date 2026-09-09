@@ -40,18 +40,15 @@ pub async fn walk_tree(pid: u32) -> Result<Vec<Element>, LxsError> {
         .await
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?;
 
-    // Retry: AT-SPI bridges register lazily after an app maps its first window.
-    let mut last_error = None;
     for attempt in 0..4 {
         if let Some(app) = find_app(&conn, &root, pid).await {
             return Ok(walk(&conn, &app).await);
         }
-        last_error = Some(LxsError::DisplayNotFound(format!("pid {}", pid)));
         if attempt < 3 {
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
     }
-    Err(last_error.unwrap())
+    Err(LxsError::DisplayNotFound(format!("pid {}", pid)))
 }
 
 async fn find_app<'a>(
@@ -86,9 +83,9 @@ pub(crate) async fn walk<'a>(
     root: &'a AccessibleProxy<'a>,
 ) -> Vec<Element> {
     let mut elements = Vec::new();
-    let mut stack: Vec<(AccessibleProxy<'a>, usize)> = vec![(root.clone(), 0)];
+    let mut stack: Vec<AccessibleProxy<'a>> = vec![root.clone()];
 
-    while let Some((node, _depth)) = stack.pop() {
+    while let Some(node) = stack.pop() {
         let role = node
             .get_role()
             .await
@@ -135,7 +132,7 @@ pub(crate) async fn walk<'a>(
         if let Some(Ok(children)) = call(node.get_children()).await {
             for child_ref in children.into_iter().rev() {
                 if let Ok(child) = conn.object_as_accessible(&child_ref).await {
-                    stack.push((child, _depth + 1));
+                    stack.push(child);
                 }
             }
         }

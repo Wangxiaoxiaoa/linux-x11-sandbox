@@ -6,6 +6,6 @@ pub struct OpenboxWM;
 
 impl OpenboxWM {
     pub async fn start(display: &str) -> Result<ManagedProcess, LxsError> {
-        ManagedProcess::spawn_with_env("openbox", &["--replace"], &[("DISPLAY", display)]).await
+        ManagedProcess::spawn("openbox", &["--replace"], &[("DISPLAY", display)]).await
     }
 }

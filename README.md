@@ -4,12 +4,12 @@ Linux X11 GUI sandbox with a built-in automation driver.
 
 Provides an MCP server, a Rust SDK, and a plugin/embeddable interface for running
 GUI applications in isolated X11 displays. Each display gets its own X server
-(Xvfb or Xephyr), window manager, and set of applications. Displays do not share
-windows, focus, clipboard, or desktop shell—only the underlying filesystem.
+(Xvfb), window manager, and set of applications. Displays do not share windows,
+focus, clipboard, or desktop shell—only the underlying filesystem.
 
 ## Features
 
-- Headless X11 display per sandbox (Xvfb/Xephyr + openbox)
+- Headless X11 display per sandbox (Xvfb + openbox)
 - Built-in native automation driver
   - Mouse: move, click, scroll
   - Keyboard: type text, key combos
@@ -23,13 +23,13 @@ windows, focus, clipboard, or desktop shell—only the underlying filesystem.
 Requires:
 
 - Rust toolchain
-- `libx11-dev`, `libxtst-dev`, `xvfb`
+- `xvfb`
 - `openbox`
 
 On Debian/Ubuntu:
 
 ```bash
-sudo apt-get install -y libx11-dev libxtst-dev xvfb openbox
+sudo apt-get install -y xvfb openbox
 ```
 
 Build the MCP server:

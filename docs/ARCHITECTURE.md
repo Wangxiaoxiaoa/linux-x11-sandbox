@@ -1,6 +1,6 @@
 # linux-x11-sandbox Architecture
 
-> **Implementation status:** This document describes the target architecture. The current MVP implements the MCP stdio server, native X11/XTest driver, Xvfb/Xephyr + openbox runtime, and AT-SPI state access. Items marked as reserved or future (CuaDriver adapter, HTTP/SSE, C FFI, runtime submodules) are not yet implemented.
+> **Implementation status:** This document describes the target architecture. The current MVP implements the MCP stdio server, native X11/XTest driver, Xvfb + openbox runtime, and AT-SPI state access. Items marked as reserved or future (CuaDriver adapter, HTTP/SSE, C FFI, runtime submodules, Xephyr backend) are not yet implemented.
 
 ## 1. Overview
 
@@ -17,7 +17,7 @@ The system is designed to be consumed in three ways:
 | Goal | Description |
 |------|-------------|
 | **Multi-display** | Support multiple concurrent X11 displays (`:99`, `:100`, `:101`, ...). |
-| **Backend variety** | Support headless (`Xvfb`) and visible (`Xephyr`) X servers. |
+| **Backend variety** | Headless (`Xvfb`) X server; `Xephyr` is reserved for future use. |
 | **Pluggable driver** | Built-in native driver by default; optional `cua-driver` adapter through a unified `Driver` trait. |
 | **Built-in automation** | Mouse, keyboard, screenshot, and AT-SPI state access per display. |
 | **No host interference** | Operations on sandbox displays must not steal focus from or affect the user's main desktop. |

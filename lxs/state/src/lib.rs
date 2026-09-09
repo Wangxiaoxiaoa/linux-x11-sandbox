@@ -96,29 +96,18 @@ fn capture_rect(
         .map_err(xerr)?;
 
     let data = reply.data;
+    let stride = data.len() / h as usize;
     let mut buf = vec![0u8; (w as u32 * h as u32 * 3) as usize];
-    let bytes_per_pixel = if reply.depth <= 8 {
-        1
-    } else if reply.depth <= 16 {
-        2
-    } else {
-        4
-    };
-    let stride = if h == 0 { 0 } else { data.len() / h as usize };
 
     for row in 0..h as usize {
         for col in 0..w as usize {
-            let offset = row * stride + col * bytes_per_pixel;
-            let pixel = if bytes_per_pixel >= 4 {
-                u32::from_ne_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                ])
-            } else {
-                u32::from_ne_bytes([data[offset], data[offset + 1], data[offset + 2], 0])
-            };
+            let offset = row * stride + col * 4;
+            let pixel = u32::from_ne_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
             let idx = (row * w as usize + col) * 3;
             buf[idx] = ((pixel >> 16) & 0xff) as u8;
             buf[idx + 1] = ((pixel >> 8) & 0xff) as u8;
@@ -126,11 +115,12 @@ fn capture_rect(
         }
     }
 
-    let img = RgbImage::from_raw(w as u32, h as u32, buf).unwrap();
+    let img = RgbImage::from_raw(w as u32, h as u32, buf)
+        .ok_or_else(|| LxsError::InvalidArgument("failed to create image buffer".into()))?;
     let mut png = Vec::new();
     image::codecs::png::PngEncoder::new(&mut png)
         .write_image(&img, w as u32, h as u32, image::ExtendedColorType::Rgb8)
-        .unwrap();
+        .map_err(|e| LxsError::InvalidArgument(e.to_string()))?;
 
     Ok(Screenshot { data: png })
 }

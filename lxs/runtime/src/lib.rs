@@ -7,7 +7,7 @@ pub mod process;
 pub mod wm;
 pub mod xserver;
 
-pub use display::{Backend, Display, DisplayConfig};
+pub use display::{Display, DisplayConfig};
 
 pub struct Runtime {
     next_display: AtomicU32,

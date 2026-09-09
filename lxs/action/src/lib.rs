@@ -194,7 +194,7 @@ impl InputBackend for XtestInput {
                 .map_err(xerr)?;
 
             let keysym = keysym_for_name(&key)
-                .or_else(|| keysym_for_char(key.chars().next().unwrap_or('\0')))
+                .or_else(|| key.chars().next().and_then(keysym_for_char))
                 .ok_or_else(|| LxsError::InvalidArgument(format!("unknown key: {}", key)))?;
             let (keycode, _) = keycode_for_keysym(&mapping, keysym)
                 .ok_or_else(|| LxsError::InvalidArgument(format!("no keycode for key: {}", key)))?;

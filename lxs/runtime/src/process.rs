@@ -27,29 +27,7 @@ pub struct ManagedProcess {
 }
 
 impl ManagedProcess {
-    pub async fn spawn(cmd: &str, args: &[&str]) -> Result<Self, LxsError> {
-        let effective_args = ensure_accessibility_args(cmd, args);
-        let child = Command::new(cmd)
-            .args(&effective_args)
-            .env("ACCESSIBILITY_ENABLED", "1")
-            .env("NO_AT_BRIDGE", "0")
-            .env("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1")
-            .env("QT_ACCESSIBILITY", "1")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?;
-
-        let pid = child.id().unwrap_or(0);
-        Ok(Self { child, pid })
-    }
-
-    pub async fn spawn_with_env(
-        cmd: &str,
-        args: &[&str],
-        envs: &[(&str, &str)],
-    ) -> Result<Self, LxsError> {
+    pub async fn spawn(cmd: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Self, LxsError> {
         let effective_args = ensure_accessibility_args(cmd, args);
         let mut command = Command::new(cmd);
         command

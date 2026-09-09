@@ -13,13 +13,6 @@ pub struct DisplayConfig {
     pub width: u32,
     pub height: u32,
     pub depth: u32,
-    pub backend: Backend,
-}
-
-#[derive(Clone, Copy)]
-pub enum Backend {
-    Xvfb,
-    Xephyr,
 }
 
 impl Default for DisplayConfig {
@@ -28,7 +21,6 @@ impl Default for DisplayConfig {
             width: 1280,
             height: 800,
             depth: 24,
-            backend: Backend::Xvfb,
         }
     }
 }
@@ -50,14 +42,8 @@ impl Display {
         display: String,
         config: DisplayConfig,
     ) -> Result<Self, LxsError> {
-        let xserver = match config.backend {
-            Backend::Xvfb => {
-                XvfbBackend::start(&display, config.width, config.height, config.depth).await?
-            }
-            Backend::Xephyr => {
-                crate::xserver::XephyrBackend::start(&display, config.width, config.height).await?
-            }
-        };
+        let xserver =
+            XvfbBackend::start(&display, config.width, config.height, config.depth).await?;
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -89,8 +75,7 @@ impl Display {
     }
 
     pub async fn launch_app(&self, command: &str, args: &[&str]) -> Result<u32, LxsError> {
-        let proc =
-            ManagedProcess::spawn_with_env(command, args, &[("DISPLAY", &self.display)]).await?;
+        let proc = ManagedProcess::spawn(command, args, &[("DISPLAY", &self.display)]).await?;
         let pid = proc.pid();
         self.apps.lock().unwrap().push(proc);
         Ok(pid)

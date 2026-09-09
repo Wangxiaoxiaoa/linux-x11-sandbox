@@ -1,5 +1,6 @@
-use std::io::{self, BufRead, Write};
+use std::io;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
 use lxs_core::{Driver, LxsError, MouseButton, Rect};
@@ -10,8 +11,6 @@ use serde_json::{json, Value};
 pub struct McpServer {
     runtime: Arc<Runtime>,
     displays: Mutex<Vec<Arc<Mutex<Display>>>>,
-
-    tokio: tokio::runtime::Runtime,
 }
 
 #[derive(Deserialize)]
@@ -49,16 +48,15 @@ impl McpServer {
         Self {
             runtime,
             displays: Mutex::new(Vec::new()),
-            tokio: tokio::runtime::Runtime::new().unwrap(),
         }
     }
 
-    pub fn run_stdio(&self) -> io::Result<()> {
-        let stdin = io::stdin();
-        let mut stdout = io::stdout().lock();
+    pub async fn run_stdio(&self) -> io::Result<()> {
+        let stdin = BufReader::new(tokio::io::stdin());
+        let mut stdout = tokio::io::stdout();
+        let mut lines = stdin.lines();
 
-        for line in stdin.lock().lines() {
-            let line = line?;
+        while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
                 continue;
             }
@@ -89,43 +87,43 @@ impl McpServer {
                     result: Some(json!({ "tools": tool_definitions() })),
                     error: None,
                 },
-                "tools/call" => self.handle_tool_call(req.id, &req.params),
+                "tools/call" => self.handle_tool_call(req.id, &req.params).await,
                 _ => error_response(req.id, -32601, "method not found"),
             };
 
-            writeln!(stdout, "{}", serde_json::to_string(&resp).unwrap())?;
-            stdout.flush()?;
+            let msg = serde_json::to_string(&resp).unwrap();
+            stdout.write_all(msg.as_bytes()).await?;
+            stdout.write_all(b"\n").await?;
+            stdout.flush().await?;
         }
 
         Ok(())
     }
 
-    fn handle_tool_call(&self, id: Option<Value>, params: &Value) -> Response {
+    async fn handle_tool_call(&self, id: Option<Value>, params: &Value) -> Response {
         let name = params["name"].as_str().unwrap_or("");
         let args = &params["arguments"];
 
-        let result = self.tokio.block_on(async {
-            match name {
-                "lxs_display_create" => self.create_display(args).await,
-                "lxs_display_destroy" => self.destroy_display(args).await,
-                "lxs_app_launch" => self.app_launch(args).await,
-                "lxs_app_terminate" => self.app_terminate(args).await,
-                "lxs_app_list" => self.app_list(args).await,
-                "lxs_input_click" => self.click(args).await,
-                "lxs_input_move" => self.move_mouse(args).await,
-                "lxs_input_type" => self.input_type(args).await,
-                "lxs_input_key" => self.input_key(args).await,
-                "lxs_capture_screenshot" => self.screenshot(args).await,
-                "lxs_capture_region" => self.screenshot_region(args).await,
-                "lxs_display_info" => self.display_info(args).await,
-                "lxs_state_window" => self.state_window(args).await,
-                "lxs_state_tree" => self.state_tree(args).await,
-                "lxs_state_element_bounds" => self.element_bounds(args).await,
-                "lxs_perform_action" => self.perform_action(args).await,
-                "lxs_input_scroll" => self.scroll(args).await,
-                _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
-            }
-        });
+        let result = match name {
+            "lxs_display_create" => self.create_display(args).await,
+            "lxs_display_destroy" => self.destroy_display(args).await,
+            "lxs_app_launch" => self.app_launch(args).await,
+            "lxs_app_terminate" => self.app_terminate(args).await,
+            "lxs_app_list" => self.app_list(args).await,
+            "lxs_input_click" => self.click(args).await,
+            "lxs_input_move" => self.move_mouse(args).await,
+            "lxs_input_type" => self.input_type(args).await,
+            "lxs_input_key" => self.input_key(args).await,
+            "lxs_capture_screenshot" => self.screenshot(args).await,
+            "lxs_capture_region" => self.screenshot_region(args).await,
+            "lxs_display_info" => self.display_info(args).await,
+            "lxs_state_window" => self.state_window(args).await,
+            "lxs_state_tree" => self.state_tree(args).await,
+            "lxs_state_element_bounds" => self.element_bounds(args).await,
+            "lxs_perform_action" => self.perform_action(args).await,
+            "lxs_input_scroll" => self.scroll(args).await,
+            _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
+        };
 
         match result {
             Ok(value) => Response {
