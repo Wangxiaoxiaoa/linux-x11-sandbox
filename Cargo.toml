@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["lxs/*"]
 resolver = "2"
 
 [workspace.package]
@@ -18,9 +18,9 @@ x11 = { version = "2", features = ["xtest"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
 
-lxs-core = { path = "crates/lxs-core" }
-lxs-action = { path = "crates/lxs-action" }
-lxs-state = { path = "crates/lxs-state" }
-lxs-driver = { path = "crates/lxs-driver" }
-lxs-runtime = { path = "crates/lxs-runtime" }
-lxs-mcp = { path = "crates/lxs-mcp" }
+lxs-core = { path = "lxs/lxs-core" }
+lxs-action = { path = "lxs/lxs-action" }
+lxs-state = { path = "lxs/lxs-state" }
+lxs-driver = { path = "lxs/lxs-driver" }
+lxs-runtime = { path = "lxs/lxs-runtime" }
+lxs-mcp = { path = "lxs/lxs-mcp" }
