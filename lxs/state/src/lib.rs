@@ -1,22 +1,40 @@
 use async_trait::async_trait;
 use image::{ImageEncoder, RgbImage};
 use lxs_core::{A11yBackend, Bounds, CaptureBackend, LxsError, Rect, Screenshot, WindowState};
-use std::ffi::CStr;
 use tokio::task;
-use x11::xlib;
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt as _;
+use x11rb::rust_connection::{ConnectError, RustConnection};
 
 pub mod atspi;
 
-mod x11_util;
+fn xerr<E: std::fmt::Display>(e: E) -> LxsError {
+    LxsError::InvalidArgument(e.to_string())
+}
+
+fn open_connection(display: &str) -> Result<(RustConnection, usize), LxsError> {
+    RustConnection::connect(Some(display))
+        .map_err(|e: ConnectError| LxsError::InvalidArgument(format!("cannot open display: {e}")))
+}
+
+fn window_atom(conn: &RustConnection) -> Result<u32, LxsError> {
+    Ok(conn
+        .intern_atom(false, b"WINDOW")
+        .map_err(xerr)?
+        .reply()
+        .map_err(xerr)?
+        .atom)
+}
 
 pub struct X11Capture {
-    display: x11_util::DisplayHandle,
+    display: String,
 }
 
 impl X11Capture {
     pub fn new(display: &str) -> Result<Self, LxsError> {
+        let _ = open_connection(display)?;
         Ok(Self {
-            display: x11_util::open_display(display)?,
+            display: display.to_string(),
         })
     }
 }
@@ -26,13 +44,11 @@ impl CaptureBackend for X11Capture {
     async fn screenshot(&self) -> Result<Screenshot, LxsError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
-            let dpy = display.lock().unwrap();
-            unsafe {
-                let screen = xlib::XDefaultScreen(dpy.ptr());
-                let width = xlib::XDisplayWidth(dpy.ptr(), screen) as u32;
-                let height = xlib::XDisplayHeight(dpy.ptr(), screen) as u32;
-                capture_rect(dpy.ptr(), 0, 0, width, height)
-            }
+            let (conn, screen) = open_connection(&display)?;
+            let root = conn.setup().roots[screen].root;
+            let w = conn.setup().roots[screen].width_in_pixels;
+            let h = conn.setup().roots[screen].height_in_pixels;
+            capture_rect(&conn, root, 0, 0, w, h)
         })
         .await
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
@@ -41,63 +57,94 @@ impl CaptureBackend for X11Capture {
     async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
-            let dpy = display.lock().unwrap();
-            unsafe { capture_rect(dpy.ptr(), region.x, region.y, region.w, region.h) }
+            let (conn, screen) = open_connection(&display)?;
+            let root = conn.setup().roots[screen].root;
+            capture_rect(
+                &conn,
+                root,
+                region.x as i16,
+                region.y as i16,
+                region.w as u16,
+                region.h as u16,
+            )
         })
         .await
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
     }
 }
 
-unsafe fn capture_rect(
-    dpy: *mut xlib::Display,
-    x: i32,
-    y: i32,
-    w: u32,
-    h: u32,
+fn capture_rect(
+    conn: &RustConnection,
+    root: u32,
+    x: i16,
+    y: i16,
+    w: u16,
+    h: u16,
 ) -> Result<Screenshot, LxsError> {
-    let root = xlib::XRootWindow(dpy, xlib::XDefaultScreen(dpy));
-    let image = xlib::XGetImage(dpy, root, x, y, w, h, xlib::XAllPlanes(), xlib::ZPixmap);
-    if image.is_null() {
-        return Err(LxsError::InvalidArgument("capture_rect failed".into()));
-    }
+    let reply = conn
+        .get_image(
+            x11rb::protocol::xproto::ImageFormat::Z_PIXMAP,
+            root,
+            x,
+            y,
+            w,
+            h,
+            u32::MAX,
+        )
+        .map_err(xerr)?
+        .reply()
+        .map_err(xerr)?;
 
-    let bytes_per_line = (*image).bytes_per_line;
-    let bits_per_pixel = (*image).bits_per_pixel;
-    let data = (*image).data as *const u8;
-    let mut buf = vec![0u8; (w * h * 3) as usize];
+    let data = reply.data;
+    let mut buf = vec![0u8; (w as u32 * h as u32 * 3) as usize];
+    let bytes_per_pixel = if reply.depth <= 8 {
+        1
+    } else if reply.depth <= 16 {
+        2
+    } else {
+        4
+    };
+    let stride = if h == 0 { 0 } else { data.len() / h as usize };
 
-    for row in 0..h as i32 {
-        for col in 0..w as i32 {
-            let offset = (row * bytes_per_line + col * (bits_per_pixel / 8)) as isize;
-            let pixel = *(data.offset(offset) as *const u32);
-            let idx = ((row as u32 * w + col as u32) * 3) as usize;
+    for row in 0..h as usize {
+        for col in 0..w as usize {
+            let offset = row * stride + col * bytes_per_pixel;
+            let pixel = if bytes_per_pixel >= 4 {
+                u32::from_ne_bytes([
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
+                ])
+            } else {
+                u32::from_ne_bytes([data[offset], data[offset + 1], data[offset + 2], 0])
+            };
+            let idx = (row * w as usize + col) * 3;
             buf[idx] = ((pixel >> 16) & 0xff) as u8;
             buf[idx + 1] = ((pixel >> 8) & 0xff) as u8;
             buf[idx + 2] = (pixel & 0xff) as u8;
         }
     }
 
-    xlib::XDestroyImage(image);
-
-    let img = RgbImage::from_raw(w, h, buf).unwrap();
+    let img = RgbImage::from_raw(w as u32, h as u32, buf).unwrap();
     let mut png = Vec::new();
     image::codecs::png::PngEncoder::new(&mut png)
-        .write_image(&img, w, h, image::ExtendedColorType::Rgb8)
+        .write_image(&img, w as u32, h as u32, image::ExtendedColorType::Rgb8)
         .unwrap();
 
     Ok(Screenshot { data: png })
 }
 
 pub struct AtspiA11y {
-    display: x11_util::DisplayHandle,
+    display: String,
     elements: std::sync::Mutex<Option<Vec<atspi::Element>>>,
 }
 
 impl AtspiA11y {
     pub fn new(display: &str) -> Result<Self, LxsError> {
+        let _ = open_connection(display)?;
         Ok(Self {
-            display: x11_util::open_display(display)?,
+            display: display.to_string(),
             elements: std::sync::Mutex::new(None),
         })
     }
@@ -108,8 +155,54 @@ impl A11yBackend for AtspiA11y {
     async fn window_state(&self) -> Result<WindowState, LxsError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
-            let dpy = display.lock().unwrap();
-            unsafe { active_window_title(dpy.ptr()) }
+            let (conn, screen) = open_connection(&display)?;
+            let root = conn.setup().roots[screen].root;
+
+            let net_active = conn
+                .intern_atom(false, b"_NET_ACTIVE_WINDOW")
+                .map_err(xerr)?
+                .reply()
+                .map_err(xerr)?
+                .atom;
+            let net_name = conn
+                .intern_atom(false, b"_NET_WM_NAME")
+                .map_err(xerr)?
+                .reply()
+                .map_err(xerr)?
+                .atom;
+            let utf8 = conn
+                .intern_atom(false, b"UTF8_STRING")
+                .map_err(xerr)?
+                .reply()
+                .map_err(xerr)?
+                .atom;
+
+            let active_reply = conn
+                .get_property(false, root, net_active, window_atom(&conn)?, 0, 1)
+                .map_err(xerr)?
+                .reply()
+                .map_err(xerr)?;
+
+            let mut title = None;
+            if active_reply.format == 32 && active_reply.value.len() >= 4 {
+                let window = u32::from_ne_bytes([
+                    active_reply.value[0],
+                    active_reply.value[1],
+                    active_reply.value[2],
+                    active_reply.value[3],
+                ]);
+
+                let name_reply = conn
+                    .get_property(false, window, net_name, utf8, 0, 1024)
+                    .map_err(xerr)?
+                    .reply()
+                    .map_err(xerr)?;
+                if !name_reply.value.is_empty() {
+                    title = String::from_utf8(name_reply.value).ok();
+                }
+            }
+
+            Ok(WindowState { title })
         })
         .await
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
@@ -136,65 +229,4 @@ impl A11yBackend for AtspiA11y {
     async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError> {
         atspi::perform_action(pid, index, action).await
     }
-}
-
-unsafe fn active_window_title(dpy: *mut xlib::Display) -> Result<WindowState, LxsError> {
-    let screen = xlib::XDefaultScreen(dpy);
-    let root = xlib::XRootWindow(dpy, screen);
-    let net_active = xlib::XInternAtom(dpy, c"_NET_ACTIVE_WINDOW".as_ptr(), xlib::False);
-
-    let mut actual_type = 0;
-    let mut actual_format = 0;
-    let mut nitems = 0;
-    let mut bytes_after = 0;
-    let mut prop: *mut u8 = std::ptr::null_mut();
-
-    xlib::XGetWindowProperty(
-        dpy,
-        root,
-        net_active,
-        0,
-        1,
-        xlib::False,
-        xlib::XA_WINDOW,
-        &mut actual_type,
-        &mut actual_format,
-        &mut nitems,
-        &mut bytes_after,
-        &mut prop,
-    );
-
-    let mut title = None;
-    if !prop.is_null() && nitems > 0 {
-        let window = *(prop as *const xlib::Window);
-        xlib::XFree(prop as *mut _);
-
-        let net_name = xlib::XInternAtom(dpy, c"_NET_WM_NAME".as_ptr(), xlib::False);
-        let utf8 = xlib::XInternAtom(dpy, c"UTF8_STRING".as_ptr(), xlib::False);
-
-        xlib::XGetWindowProperty(
-            dpy,
-            window,
-            net_name,
-            0,
-            1024,
-            xlib::False,
-            utf8,
-            &mut actual_type,
-            &mut actual_format,
-            &mut nitems,
-            &mut bytes_after,
-            &mut prop,
-        );
-
-        if !prop.is_null() && nitems > 0 {
-            title = CStr::from_ptr(prop as *const i8)
-                .to_str()
-                .ok()
-                .map(String::from);
-            xlib::XFree(prop as *mut _);
-        }
-    }
-
-    Ok(WindowState { title })
 }

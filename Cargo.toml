@@ -14,8 +14,9 @@ thiserror = "1"
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-x11 = { version = "2", features = ["xtest"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+x11rb = { version = "0.13", features = ["xtest"] }
+x11-keysymdef = "0.2"
 base64 = "0.22"
 atspi = { version = "0.30", features = ["tokio"] }
 
