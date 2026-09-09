@@ -5,6 +5,7 @@ use lxs_core::LxsError;
 
 pub struct ManagedProcess {
     child: Child,
+    pid: u32,
 }
 
 impl ManagedProcess {
@@ -17,7 +18,8 @@ impl ManagedProcess {
             .spawn()
             .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?;
 
-        Ok(Self { child })
+        let pid = child.id().unwrap_or(0);
+        Ok(Self { child, pid })
     }
 
     pub async fn spawn_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Self, LxsError> {
@@ -36,7 +38,12 @@ impl ManagedProcess {
             .spawn()
             .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?;
 
-        Ok(Self { child })
+        let pid = child.id().unwrap_or(0);
+        Ok(Self { child, pid })
+    }
+
+    pub fn pid(&self) -> u32 {
+        self.pid
     }
 
     pub async fn kill(&mut self) -> Result<(), LxsError> {

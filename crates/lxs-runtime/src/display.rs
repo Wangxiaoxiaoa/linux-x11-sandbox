@@ -38,6 +38,7 @@ pub struct Display {
     display: String,
     xserver: ManagedProcess,
     wm: ManagedProcess,
+    apps: std::sync::Mutex<Vec<ManagedProcess>>,
     driver: Arc<dyn Driver>,
 }
 
@@ -58,6 +59,7 @@ impl Display {
             display,
             xserver,
             wm,
+            apps: std::sync::Mutex::new(Vec::new()),
             driver,
         })
     }
@@ -74,7 +76,33 @@ impl Display {
         self.driver.clone()
     }
 
+    pub async fn launch_app(&self, command: &str, args: &[&str]) -> Result<u32, LxsError> {
+        let proc = ManagedProcess::spawn_with_env(command, args, &[("DISPLAY", &self.display)]).await?;
+        let pid = proc.pid();
+        self.apps.lock().unwrap().push(proc);
+        Ok(pid)
+    }
+
+    pub async fn terminate_app(&self, pid: u32) -> Result<(), LxsError> {
+        let mut apps = self.apps.lock().unwrap();
+        let pos = apps
+            .iter()
+            .position(|p| p.pid() == pid)
+            .ok_or_else(|| LxsError::DisplayNotFound(format!("pid {}", pid)))?;
+        let mut proc = apps.remove(pos);
+        proc.kill().await
+    }
+
+    pub fn list_apps(&self) -> Vec<u32> {
+        self.apps.lock().unwrap().iter().map(|p| p.pid()).collect()
+    }
+
     pub async fn destroy(&mut self) -> Result<(), LxsError> {
+        let mut apps = self.apps.lock().unwrap();
+        for app in apps.iter_mut() {
+            let _ = app.kill().await;
+        }
+        apps.clear();
         let _ = self.wm.kill().await;
         let _ = self.xserver.kill().await;
         Ok(())

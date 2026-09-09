@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 pub struct McpServer {
     runtime: Arc<Runtime>,
-    displays: Mutex<Vec<Display>>,
+    displays: Mutex<Vec<Arc<Mutex<Display>>>>,
     tokio: tokio::runtime::Runtime,
 }
 
@@ -106,6 +106,9 @@ impl McpServer {
             match name {
                 "lxs_display_create" => self.create_display(args).await,
                 "lxs_display_destroy" => self.destroy_display(args).await,
+                "lxs_app_launch" => self.app_launch(args).await,
+                "lxs_app_terminate" => self.app_terminate(args).await,
+                "lxs_app_list" => self.app_list(args).await,
                 "lxs_input_click" => self.click(args).await,
                 "lxs_input_move" => self.move_mouse(args).await,
                 "lxs_capture_screenshot" => self.screenshot(args).await,
@@ -127,20 +130,52 @@ impl McpServer {
     async fn create_display(&self, _args: &Value) -> Result<Value, LxsError> {
         let display = self.runtime.create_display(DisplayConfig::default()).await?;
         let id = display.id().to_string();
-        self.displays.lock().unwrap().push(display);
+        let display_str = display.display().to_string();
+        self.displays.lock().unwrap().push(Arc::new(Mutex::new(display)));
         Ok(json!({
             "display_id": id,
-            "display": self.displays.lock().unwrap().last().unwrap().display()
+            "display": display_str
         }))
     }
 
     async fn destroy_display(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let display = self.find_display(id)?;
+        display.lock().unwrap().destroy().await?;
+
         let mut displays = self.displays.lock().unwrap();
-        let pos = displays.iter().position(|d| d.id() == id).ok_or_else(|| LxsError::DisplayNotFound(id.into()))?;
-        let mut display = displays.remove(pos);
-        display.destroy().await?;
+        displays.retain(|d| d.lock().unwrap().id() != id);
         Ok(json!({ "success": true }))
+    }
+
+    async fn app_launch(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let command = args["command"].as_str().ok_or_else(|| LxsError::InvalidArgument("command required".into()))?;
+        let args_vec: Vec<String> = args["args"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let arg_refs: Vec<&str> = args_vec.iter().map(|s| s.as_str()).collect();
+
+        let display = self.find_display(id)?;
+        let pid = display.lock().unwrap().launch_app(command, &arg_refs).await?;
+        Ok(json!({ "pid": pid }))
+    }
+
+    async fn app_terminate(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
+
+        let display = self.find_display(id)?;
+        display.lock().unwrap().terminate_app(pid).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn app_list(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let display = self.find_display(id)?;
+        let pids = display.lock().unwrap().list_apps();
+        Ok(json!({ "pids": pids }))
     }
 
     async fn click(&self, args: &Value) -> Result<Value, LxsError> {
@@ -175,9 +210,15 @@ impl McpServer {
     }
 
     fn find_driver(&self, id: &str) -> Result<Arc<dyn Driver>, LxsError> {
+        let display = self.find_display(id)?;
+        let driver = display.lock().unwrap().driver();
+        Ok(driver)
+    }
+
+    fn find_display(&self, id: &str) -> Result<Arc<Mutex<Display>>, LxsError> {
         let displays = self.displays.lock().unwrap();
-        let display = displays.iter().find(|d| d.id() == id).ok_or_else(|| LxsError::DisplayNotFound(id.into()))?;
-        Ok(display.driver())
+        let display = displays.iter().find(|d| d.lock().unwrap().id() == id).ok_or_else(|| LxsError::DisplayNotFound(id.into()))?;
+        Ok(Arc::clone(display))
     }
 }
 
@@ -203,6 +244,21 @@ fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "lxs_display_destroy",
             "description": "Destroy an X11 display",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_app_launch",
+            "description": "Launch an application on a display",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "command": { "type": "string" }, "args": { "type": "array", "items": { "type": "string" } } }, "required": ["display_id", "command"] }
+        }),
+        json!({
+            "name": "lxs_app_terminate",
+            "description": "Terminate an application by PID",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" } }, "required": ["display_id", "pid"] }
+        }),
+        json!({
+            "name": "lxs_app_list",
+            "description": "List running applications on a display",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
         }),
         json!({
