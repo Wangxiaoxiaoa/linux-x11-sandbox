@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "linux-x11-sandbox"
+version = "0.1.0"
+description = "Linux X11 GUI sandbox with MCP server and native automation driver"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "linux-x11-sandbox contributors" },
+]
+keywords = [
+    "mcp",
+    "gui",
+    "automation",
+    "x11",
+    "sandbox",
+    "accessibility",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox"
+Repository = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox"
+Issues = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox/issues"
+
+[project.scripts]
+linux-x11-sandbox = "linux_x11_sandbox.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["python/src/linux_x11_sandbox"]
+artifacts = [
+    "python/src/linux_x11_sandbox/bin/*",
+    "python/src/linux_x11_sandbox/skill/*",
+]
+pure-python = false
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"

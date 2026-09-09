@@ -38,20 +38,26 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for crate layout, trait design,
 
 ## Quick install
 
-Run the one-click installer from the project root:
+Install the Python distribution package:
 
 ```bash
-./install.sh
+pip install linux-x11-sandbox
 ```
 
-It will:
+Then register the bundled skill and MCP server with your agents:
 
-1. Install `xvfb` and `openbox` if missing.
-2. Build the release binary.
-3. Register the skill for detected agents (pi, Claude Code, Codex, `.agents`).
-4. Register the MCP server for detected agents (Claude Desktop, Cursor).
+```bash
+linux-x11-sandbox setup
+```
 
-Then restart your agent.
+Restart your agent. The setup command auto-detects pi, Claude Code, Codex,
+Claude Desktop, Cursor, and `.agents`.
+
+Requirements:
+
+- Python 3.10+
+- Rust toolchain
+- Linux with `xvfb` and `openbox`
 
 ## Manual build
 
@@ -78,32 +84,41 @@ The MCP server speaks JSON-RPC 2.0 over stdin/stdout. Any MCP-compatible agent c
 
 ### 1.1 Launch the server
 
+If installed via pip:
+
+```bash
+linux-x11-sandbox
+```
+
+Or from the built Rust binary:
+
 ```bash
 ./target/release/linux-x11-sandbox
 ```
 
-### 1.2 Register the skill
+### 1.2 One-click agent registration
 
-A ready-to-use skill is included in [`skills/linux-x11-sandbox/SKILL.md`](skills/linux-x11-sandbox/SKILL.md). Copy or symlink it into your agent's skill directory:
+```bash
+linux-x11-sandbox setup
+```
 
-- **pi**: `~/.pi/agent/skills/linux-x11-sandbox/` or `.pi/skills/linux-x11-sandbox/`
+This registers the skill and MCP server for detected agents. Restart your agent after running it.
+
+### 1.3 Manual registration
+
+The skill lives in [`skills/linux-x11-sandbox/SKILL.md`](skills/linux-x11-sandbox/SKILL.md). Symlink it into your agent's skill directory:
+
+- **pi**: `~/.pi/agent/skills/linux-x11-sandbox/`
 - **Claude Code**: `.claude/skills/linux-x11-sandbox/`
 - **Codex**: `.codex/skills/linux-x11-sandbox/`
 
-```bash
-mkdir -p ~/.pi/agent/skills
-ln -s /path/to/linux-x11-sandbox/skills/linux-x11-sandbox ~/.pi/agent/skills/linux-x11-sandbox
-```
-
-### 1.3 Register the server in an agent
-
-Most agents support an `mcpServers` configuration. Example for Claude Desktop:
+For MCP, most agents use an `mcpServers` block. Example for Claude Desktop:
 
 ```json
 {
   "mcpServers": {
     "linux-x11-sandbox": {
-      "command": "/path/to/linux-x11-sandbox/target/release/linux-x11-sandbox"
+      "command": "linux-x11-sandbox"
     }
   }
 }

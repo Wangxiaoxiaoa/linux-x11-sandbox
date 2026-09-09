@@ -38,20 +38,25 @@
 
 ## 快速安装
 
-在项目根目录运行一键安装脚本：
+安装 Python 发行包：
 
 ```bash
-./install.sh
+pip install linux-x11-sandbox
 ```
 
-脚本会：
+然后向智能体注册自带的 skill 和 MCP 服务器：
 
-1. 安装 `xvfb` 和 `openbox`（如果缺失）。
-2. 构建 release 二进制文件。
-3. 为检测到的智能体注册 skill（pi、Claude Code、Codex、`.agents`）。
-4. 为检测到的智能体注册 MCP 服务器（Claude Desktop、Cursor）。
+```bash
+linux-x11-sandbox setup
+```
 
-然后重启你的智能体即可。
+重启智能体即可。setup 命令会自动检测 pi、Claude Code、Codex、Claude Desktop、Cursor 和 `.agents`。
+
+依赖：
+
+- Python 3.10+
+- Rust 工具链
+- 已安装 `xvfb` 和 `openbox` 的 Linux
 
 ## 手动构建
 
@@ -78,32 +83,41 @@ MCP 服务器通过标准输入输出使用 JSON-RPC 2.0。任何兼容 MCP 的�
 
 ### 1.1 启动服务器
 
+通过 pip 安装后：
+
+```bash
+linux-x11-sandbox
+```
+
+或者直接使用构建好的 Rust 二进制：
+
 ```bash
 ./target/release/linux-x11-sandbox
 ```
 
-### 1.2 注册 skill
+### 1.2 一键注册智能体
 
-项目已提供现成 skill：[`skills/linux-x11-sandbox/SKILL.md`](skills/linux-x11-sandbox/SKILL.md)。复制或软链接到智能体的 skill 目录：
+```bash
+linux-x11-sandbox setup
+```
 
-- **pi**：`~/.pi/agent/skills/linux-x11-sandbox/` 或 `.pi/skills/linux-x11-sandbox/`
+该命令会为检测到的智能体注册 skill 和 MCP 服务器。执行后重启智能体即可。
+
+### 1.3 手动注册
+
+skill 位于 [`skills/linux-x11-sandbox/SKILL.md`](skills/linux-x11-sandbox/SKILL.md)。软链接到智能体的 skill 目录：
+
+- **pi**：`~/.pi/agent/skills/linux-x11-sandbox/`
 - **Claude Code**：`.claude/skills/linux-x11-sandbox/`
 - **Codex**：`.codex/skills/linux-x11-sandbox/`
 
-```bash
-mkdir -p ~/.pi/agent/skills
-ln -s /path/to/linux-x11-sandbox/skills/linux-x11-sandbox ~/.pi/agent/skills/linux-x11-sandbox
-```
-
-### 1.3 在智能体中注册 MCP 服务器
-
-大多数智能体支持 `mcpServers` 配置。Claude Desktop 示例：
+MCP 配置大多数智能体使用 `mcpServers`。Claude Desktop 示例：
 
 ```json
 {
   "mcpServers": {
     "linux-x11-sandbox": {
-      "command": "/path/to/linux-x11-sandbox/target/release/linux-x11-sandbox"
+      "command": "linux-x11-sandbox"
     }
   }
 }
