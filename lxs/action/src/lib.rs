@@ -226,3 +226,42 @@ impl InputBackend for XtestInput {
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keysym_lookup() {
+        assert_eq!(keysym_for_char('a'), Some(0x61));
+        assert_eq!(keysym_for_char('A'), Some(0x41));
+        assert_eq!(keysym_for_name("Return"), Some(0xff0d));
+        assert_eq!(keysym_for_name("Shift_L"), Some(0xffe1));
+    }
+
+    #[test]
+    fn keycode_for_keysym_finds_slot_zero() {
+        let mapping = x11rb::protocol::xproto::GetKeyboardMappingReply {
+            keysyms_per_keycode: 2,
+            sequence: 0,
+            keysyms: vec![
+                0x61, 0x41, // keycode 8 -> a/A
+                0x62, 0x42, // keycode 9 -> b/B
+            ],
+        };
+        assert_eq!(keycode_for_keysym(&mapping, 0x61), Some((8, false)));
+    }
+
+    #[test]
+    fn keycode_for_keysym_finds_shifted_slot() {
+        let mapping = x11rb::protocol::xproto::GetKeyboardMappingReply {
+            keysyms_per_keycode: 2,
+            sequence: 0,
+            keysyms: vec![
+                0x61, 0x41, // keycode 8 -> a/A
+                0x62, 0x42, // keycode 9 -> b/B
+            ],
+        };
+        assert_eq!(keycode_for_keysym(&mapping, 0x41), Some((8, true)));
+    }
+}

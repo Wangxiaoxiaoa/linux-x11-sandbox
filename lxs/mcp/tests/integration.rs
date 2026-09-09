@@ -282,6 +282,120 @@ fn input_operations_do_not_error() {
 }
 
 #[test]
+fn display_info_matches_config() {
+    let mut s = McpSession::new();
+    let id = s.create_display();
+
+    let info = s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_display_info",
+            "arguments": { "display_id": id },
+        }),
+    );
+    assert_eq!(info["result"]["width"], 1280);
+    assert_eq!(info["result"]["height"], 800);
+    assert_eq!(info["result"]["app_count"], 0);
+
+    s.destroy_display(&id);
+}
+
+#[test]
+fn region_screenshot_is_valid_png() {
+    let mut s = McpSession::new();
+    let id = s.create_display();
+
+    let shot = s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_capture_region",
+            "arguments": { "display_id": id, "x": 10, "y": 20, "w": 100, "h": 80 },
+        }),
+    );
+    assert_eq!(shot["result"]["mimeType"], "image/png");
+
+    let data = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        shot["result"]["data"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert!(data.starts_with(&[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+
+    let img = image::load_from_memory_with_format(&data, image::ImageFormat::Png).unwrap();
+    assert_eq!(img.width(), 100);
+    assert_eq!(img.height(), 80);
+
+    s.destroy_display(&id);
+}
+
+#[test]
+fn window_state_returns_title_after_launch() {
+    let mut s = McpSession::new();
+    let id = s.create_display();
+
+    s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_app_launch",
+            "arguments": { "display_id": id, "command": "xterm", "args": [] },
+        }),
+    );
+    thread::sleep(Duration::from_millis(800));
+
+    let state = s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_state_window",
+            "arguments": { "display_id": id },
+        }),
+    );
+    let title = state["result"]["title"].as_str();
+    assert!(
+        title.map(|t| !t.is_empty()).unwrap_or(false),
+        "expected non-empty window title, got {:?}",
+        title
+    );
+
+    s.destroy_display(&id);
+}
+
+#[test]
+fn invalid_display_id_returns_error() {
+    let mut s = McpSession::new();
+    let resp = s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_display_info",
+            "arguments": { "display_id": "does-not-exist" },
+        }),
+    );
+    assert!(
+        resp["error"].is_object(),
+        "expected error response, got {resp}"
+    );
+}
+
+#[test]
+fn terminate_missing_pid_returns_error() {
+    let mut s = McpSession::new();
+    let id = s.create_display();
+
+    let resp = s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_app_terminate",
+            "arguments": { "display_id": id, "pid": 99999999 },
+        }),
+    );
+    assert!(
+        resp["error"].is_object(),
+        "expected error response, got {resp}"
+    );
+
+    s.destroy_display(&id);
+}
+
+#[test]
 #[ignore = "requires chromium to be installed"]
 fn atspi_tree_is_populated_for_chromium() {
     let mut s = McpSession::new();

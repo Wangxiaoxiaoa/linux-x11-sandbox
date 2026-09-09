@@ -220,3 +220,40 @@ impl A11yBackend for AtspiA11y {
         atspi::perform_action(pid, index, action).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::atspi::{accessibility_tree, Element};
+    use lxs_core::Bounds;
+
+    #[test]
+    fn accessibility_tree_maps_elements() {
+        let elements = vec![
+            Element {
+                index: 0,
+                role: "frame".into(),
+                name: Some("window".into()),
+                bounds: Some(Bounds {
+                    x: 0,
+                    y: 0,
+                    w: 100,
+                    h: 100,
+                }),
+                actions: vec!["click".into()],
+            },
+            Element {
+                index: 1,
+                role: "button".into(),
+                name: Some("ok".into()),
+                bounds: None,
+                actions: vec![],
+            },
+        ];
+
+        let tree = accessibility_tree(&elements);
+        assert_eq!(tree.elements.len(), 2);
+        assert_eq!(tree.elements[0].index, 0);
+        assert_eq!(tree.elements[0].role, "frame");
+        assert_eq!(tree.elements[1].name, Some("ok".into()));
+    }
+}
