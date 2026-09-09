@@ -13,9 +13,20 @@ Linux X11 GUI sandbox with a built-in native automation driver.
 
 ---
 
-`linux-x11-sandbox` runs GUI applications in isolated X11 displays. Each sandbox gets its own X server, window manager, and set of applications. Displays do not share windows, focus, clipboard, or desktop shell—only the underlying filesystem.
+## What is this?
 
-It is designed to be used in three ways:
+`linux-x11-sandbox` is a **lightweight Linux GUI automation sandbox**. It lets AI agents and programs run real GUI applications — such as browsers, terminals, IDEs, and office suites — inside isolated X11 displays, and interact with them through mouse, keyboard, screenshots, and the AT-SPI accessibility tree.
+
+Unlike a full virtual machine or container, it focuses on the **display and input layer**: each sandbox gets its own X server, window manager, and application process group. Sandboxes do not share windows, focus, clipboard, or desktop shell, while still running on the same filesystem as the host. This makes it fast to start, cheap to run, and easy to compose with existing isolation technologies.
+
+Typical use cases:
+
+- Let an AI agent operate a GUI app without taking over the host desktop.
+- Run end-to-end tests that need a real screen, real input, and real window focus.
+- Capture screenshots or accessibility trees for model training or verification.
+- Run multiple independent GUI sessions on the same machine.
+
+It can be used in three ways:
 
 1. **MCP server** — plug into any agent that supports the [Model Context Protocol](https://modelcontextprotocol.io/).
 2. **Rust SDK** — embed the sandbox and driver directly in your Rust project.
