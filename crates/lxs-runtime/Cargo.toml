@@ -1,0 +1,10 @@
+[package]
+name = "lxs-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lxs-core = { workspace = true }
+lxs-driver = { workspace = true }
+tokio = { workspace = true }

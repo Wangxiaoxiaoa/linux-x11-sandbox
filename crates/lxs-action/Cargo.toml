@@ -1,0 +1,10 @@
+[package]
+name = "lxs-action"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lxs-core = { workspace = true }
+async-trait = { workspace = true }
+x11 = { workspace = true }
