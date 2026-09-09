@@ -18,6 +18,14 @@ impl XtestInput {
         assert!(!dpy.is_null());
         Self { display: dpy }
     }
+
+    fn keycode(&self, key: &str) -> u32 {
+        let name = CString::new(key).unwrap();
+        unsafe {
+            let keysym = xlib::XStringToKeysym(name.as_ptr());
+            xlib::XKeysymToKeycode(self.display, keysym) as u32
+        }
+    }
 }
 
 impl Drop for XtestInput {
@@ -55,6 +63,42 @@ impl InputBackend for XtestInput {
         unsafe {
             let root = xlib::XDefaultRootWindow(self.display);
             xlib::XWarpPointer(self.display, 0, root, 0, 0, 0, 0, x, y);
+            xlib::XFlush(self.display);
+        }
+        Ok(())
+    }
+
+    async fn scroll(&self, _dx: i32, _dy: i32) -> Result<(), LxsError> {
+        Err(LxsError::NotImplemented)
+    }
+
+    async fn type_text(&self, text: &str) -> Result<(), LxsError> {
+        unsafe {
+            for ch in text.chars() {
+                let keycode = self.keycode(&ch.to_string());
+                xtest::XTestFakeKeyEvent(self.display, keycode, xlib::True, xlib::CurrentTime);
+                xtest::XTestFakeKeyEvent(self.display, keycode, xlib::False, xlib::CurrentTime);
+            }
+            xlib::XFlush(self.display);
+        }
+        Ok(())
+    }
+
+    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError> {
+        unsafe {
+            let codes: Vec<u32> = modifiers
+                .iter()
+                .map(|m| self.keycode(m))
+                .chain(std::iter::once(self.keycode(key)))
+                .collect();
+
+            for code in &codes {
+                xtest::XTestFakeKeyEvent(self.display, *code, xlib::True, xlib::CurrentTime);
+            }
+            for code in codes.iter().rev() {
+                xtest::XTestFakeKeyEvent(self.display, *code, xlib::False, xlib::CurrentTime);
+            }
+
             xlib::XFlush(self.display);
         }
         Ok(())

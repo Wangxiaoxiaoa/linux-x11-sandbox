@@ -32,16 +32,16 @@ impl Driver for NativeDriver {
         self.input.move_mouse(x, y).await
     }
 
-    async fn scroll(&self, _dx: i32, _dy: i32) -> Result<(), LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError> {
+        self.input.scroll(dx, dy).await
     }
 
-    async fn type_text(&self, _text: &str) -> Result<(), LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn type_text(&self, text: &str) -> Result<(), LxsError> {
+        self.input.type_text(text).await
     }
 
-    async fn key(&self, _key: &str, _modifiers: &[&str]) -> Result<(), LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError> {
+        self.input.key(key, modifiers).await
     }
 
     async fn screenshot(&self) -> Result<Screenshot, LxsError> {

@@ -111,6 +111,8 @@ impl McpServer {
                 "lxs_app_list" => self.app_list(args).await,
                 "lxs_input_click" => self.click(args).await,
                 "lxs_input_move" => self.move_mouse(args).await,
+                "lxs_input_type" => self.input_type(args).await,
+                "lxs_input_key" => self.input_key(args).await,
                 "lxs_capture_screenshot" => self.screenshot(args).await,
                 _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
             }
@@ -198,6 +200,29 @@ impl McpServer {
         Ok(json!({ "success": true }))
     }
 
+    async fn input_type(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let text = args["text"].as_str().ok_or_else(|| LxsError::InvalidArgument("text required".into()))?;
+
+        let driver = self.find_driver(id)?;
+        driver.type_text(text).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn input_key(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let key = args["key"].as_str().ok_or_else(|| LxsError::InvalidArgument("key required".into()))?;
+        let modifiers: Vec<String> = args["modifiers"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let mod_refs: Vec<&str> = modifiers.iter().map(|s| s.as_str()).collect();
+
+        let driver = self.find_driver(id)?;
+        driver.key(key, &mod_refs).await?;
+        Ok(json!({ "success": true }))
+    }
+
     async fn screenshot(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
         let driver = self.find_driver(id)?;
@@ -270,6 +295,16 @@ fn tool_definitions() -> Vec<Value> {
             "name": "lxs_input_move",
             "description": "Move the mouse cursor",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" } }, "required": ["display_id", "x", "y"] }
+        }),
+        json!({
+            "name": "lxs_input_type",
+            "description": "Type text",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "text": { "type": "string" } }, "required": ["display_id", "text"] }
+        }),
+        json!({
+            "name": "lxs_input_key",
+            "description": "Press a key or key combination",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "key": { "type": "string" }, "modifiers": { "type": "array", "items": { "type": "string" } } }, "required": ["display_id", "key"] }
         }),
         json!({
             "name": "lxs_capture_screenshot",

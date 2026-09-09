@@ -49,6 +49,9 @@ pub struct Bounds {
 pub trait InputBackend: Send + Sync {
     async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxsError>;
     async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxsError>;
+    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError>;
+    async fn type_text(&self, text: &str) -> Result<(), LxsError>;
+    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
 }
 
 #[async_trait]
