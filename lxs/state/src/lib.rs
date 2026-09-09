@@ -182,13 +182,12 @@ impl A11yBackend for AtspiA11y {
                     active_reply.value[3],
                 ]);
 
-                let name_reply = conn
-                    .get_property(false, window, net_name, utf8, 0, 1024)
-                    .map_err(xerr)?
-                    .reply()
-                    .map_err(xerr)?;
-                if !name_reply.value.is_empty() {
-                    title = String::from_utf8(name_reply.value).ok();
+                if let Ok(cookie) = conn.get_property(false, window, net_name, utf8, 0, 1024) {
+                    if let Ok(name_reply) = cookie.reply() {
+                        if !name_reply.value.is_empty() {
+                            title = String::from_utf8(name_reply.value).ok();
+                        }
+                    }
                 }
             }
 
