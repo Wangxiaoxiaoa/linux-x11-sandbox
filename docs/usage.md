@@ -29,7 +29,7 @@ The server speaks MCP over stdio.
 ## Run tests
 
 ```bash
-cargo test
+cargo test -- --test-threads=1
 ```
 
-The MCP integration test lives in `lxs/mcp/tests/mcp_smoke.rs`.
+Integration tests live in `lxs/mcp/tests/integration.rs`. They exercise the MCP server end-to-end and must run sequentially because each test allocates X11 displays.

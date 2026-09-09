@@ -7,4 +7,5 @@ license.workspace = true
 [dependencies]
 lxs-core = { workspace = true }
 async-trait = { workspace = true }
+tokio = { workspace = true }
 x11 = { workspace = true }

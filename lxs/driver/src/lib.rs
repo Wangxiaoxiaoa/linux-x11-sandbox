@@ -13,12 +13,12 @@ pub struct NativeDriver {
 }
 
 impl NativeDriver {
-    pub fn new(display: &str) -> Self {
-        Self {
-            input: XtestInput::new(display),
-            capture: X11Capture::new(display),
-            a11y: AtspiA11y::new(display),
-        }
+    pub fn new(display: &str) -> Result<Self, LxsError> {
+        Ok(Self {
+            input: XtestInput::new(display)?,
+            capture: X11Capture::new(display)?,
+            a11y: AtspiA11y::new(display)?,
+        })
     }
 }
 

@@ -62,7 +62,7 @@ impl Display {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let wm = OpenboxWM::start(&display).await?;
-        let driver = Arc::new(NativeDriver::new(&display));
+        let driver = Arc::new(NativeDriver::new(&display)?);
 
         Ok(Self {
             id,
