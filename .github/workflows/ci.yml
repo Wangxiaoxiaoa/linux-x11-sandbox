@@ -18,7 +18,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxtst-dev
+          sudo apt-get install -y libx11-dev libxtst-dev xvfb
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -48,3 +48,6 @@ jobs:
 
       - name: cargo test
         run: cargo test
+
+      - name: mcp smoke test
+        run: python3 scripts/mcp_smoke.py
