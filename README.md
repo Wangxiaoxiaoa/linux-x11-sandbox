@@ -36,7 +36,24 @@ It can be used in three ways:
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for crate layout, trait design, and integration patterns.
 
-## Build
+## Quick install
+
+Run the one-click installer from the project root:
+
+```bash
+./install.sh
+```
+
+It will:
+
+1. Install `xvfb` and `openbox` if missing.
+2. Build the release binary.
+3. Register the skill for detected agents (pi, Claude Code, Codex, `.agents`).
+4. Register the MCP server for detected agents (Claude Desktop, Cursor).
+
+Then restart your agent.
+
+## Manual build
 
 Requirements:
 

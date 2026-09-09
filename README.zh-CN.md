@@ -36,7 +36,24 @@
 
 见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 了解 crate 划分、trait 设计和集成方式。
 
-## 构建
+## 快速安装
+
+在项目根目录运行一键安装脚本：
+
+```bash
+./install.sh
+```
+
+脚本会：
+
+1. 安装 `xvfb` 和 `openbox`（如果缺失）。
+2. 构建 release 二进制文件。
+3. 为检测到的智能体注册 skill（pi、Claude Code、Codex、`.agents`）。
+4. 为检测到的智能体注册 MCP 服务器（Claude Desktop、Cursor）。
+
+然后重启你的智能体即可。
+
+## 手动构建
 
 依赖：
 
