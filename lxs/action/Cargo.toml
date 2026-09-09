@@ -8,5 +8,5 @@ license.workspace = true
 lxs-core = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
-x11rb = { version = "0.13", features = ["xtest"] }
+x11 = { workspace = true }
 x11-keysymdef = { workspace = true }
