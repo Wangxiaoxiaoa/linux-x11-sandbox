@@ -21,6 +21,7 @@ pub enum MouseButton {
     Middle,
 }
 
+#[derive(Clone, Debug)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,
@@ -36,8 +37,18 @@ pub struct WindowState {
     pub title: Option<String>,
 }
 
-pub struct AccessibilityTree;
+pub struct A11yElement {
+    pub index: usize,
+    pub role: String,
+    pub name: Option<String>,
+    pub actions: Vec<String>,
+}
 
+pub struct AccessibilityTree {
+    pub elements: Vec<A11yElement>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Bounds {
     pub x: i32,
     pub y: i32,

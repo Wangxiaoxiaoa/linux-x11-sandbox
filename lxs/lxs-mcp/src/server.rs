@@ -114,7 +114,12 @@ impl McpServer {
                 "lxs_input_type" => self.input_type(args).await,
                 "lxs_input_key" => self.input_key(args).await,
                 "lxs_capture_screenshot" => self.screenshot(args).await,
+                "lxs_capture_region" => self.screenshot_region(args).await,
                 "lxs_state_window" => self.state_window(args).await,
+                "lxs_state_tree" => self.state_tree(args).await,
+                "lxs_state_element_bounds" => self.element_bounds(args).await,
+                "lxs_perform_action" => self.perform_action(args).await,
+                "lxs_input_scroll" => self.scroll(args).await,
                 _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
             }
         });
@@ -235,11 +240,66 @@ impl McpServer {
         }))
     }
 
+    async fn screenshot_region(&self, _args: &Value) -> Result<Value, LxsError> {
+        Err(LxsError::NotImplemented)
+    }
+
+    async fn scroll(&self, _args: &Value) -> Result<Value, LxsError> {
+        Err(LxsError::NotImplemented)
+    }
+
     async fn state_window(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
         let driver = self.find_driver(id)?;
         let state = driver.window_state().await?;
         Ok(json!({ "title": state.title }))
+    }
+
+    async fn state_tree(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
+
+        let driver = self.find_driver(id)?;
+        let tree = driver.accessibility_tree(Some(pid)).await?;
+        let elements: Vec<Value> = tree
+            .elements
+            .iter()
+            .map(|e| {
+                json!({
+                    "index": e.index,
+                    "role": e.role,
+                    "name": e.name,
+                    "actions": e.actions,
+                })
+            })
+            .collect();
+        Ok(json!({ "elements": elements }))
+    }
+
+    async fn element_bounds(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
+        let index = args["index"].as_u64().ok_or_else(|| LxsError::InvalidArgument("index required".into()))? as usize;
+
+        let driver = self.find_driver(id)?;
+        let bounds = driver.element_bounds(pid, index).await?;
+        Ok(json!({
+            "x": bounds.x,
+            "y": bounds.y,
+            "w": bounds.w,
+            "h": bounds.h,
+        }))
+    }
+
+    async fn perform_action(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
+        let index = args["index"].as_u64().ok_or_else(|| LxsError::InvalidArgument("index required".into()))? as usize;
+        let action = args["action"].as_str().ok_or_else(|| LxsError::InvalidArgument("action required".into()))?;
+
+        let driver = self.find_driver(id)?;
+        driver.perform_action(pid, index, action).await?;
+        Ok(json!({ "success": true }))
     }
 
     fn find_driver(&self, id: &str) -> Result<Arc<dyn Driver>, LxsError> {
@@ -323,6 +383,31 @@ fn tool_definitions() -> Vec<Value> {
             "name": "lxs_state_window",
             "description": "Get the active window title",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_state_tree",
+            "description": "Walk the AT-SPI accessibility tree for a process",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" } }, "required": ["display_id", "pid"] }
+        }),
+        json!({
+            "name": "lxs_state_element_bounds",
+            "description": "Get screen bounds of an indexed accessibility element",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" } }, "required": ["display_id", "pid", "index"] }
+        }),
+        json!({
+            "name": "lxs_perform_action",
+            "description": "Perform a named AT-SPI action on an indexed element",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "action": { "type": "string" } }, "required": ["display_id", "pid", "index", "action"] }
+        }),
+        json!({
+            "name": "lxs_input_scroll",
+            "description": "Scroll by a delta",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "dx": { "type": "integer" }, "dy": { "type": "integer" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_capture_region",
+            "description": "Take a screenshot of a region",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" }, "w": { "type": "integer" }, "h": { "type": "integer" } }, "required": ["display_id", "x", "y", "w", "h"] }
         }),
     ]
 }

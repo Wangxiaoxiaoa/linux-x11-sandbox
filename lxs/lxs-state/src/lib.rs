@@ -4,6 +4,8 @@ use lxs_core::{A11yBackend, Bounds, CaptureBackend, LxsError, Rect, Screenshot, 
 use std::ffi::{CStr, CString};
 use x11::xlib;
 
+pub mod atspi;
+
 pub struct X11Capture {
     display: *mut xlib::Display,
 }
@@ -84,6 +86,7 @@ impl CaptureBackend for X11Capture {
 
 pub struct AtspiA11y {
     display: *mut xlib::Display,
+    elements: std::sync::Mutex<Option<Vec<atspi::Element>>>,
 }
 
 unsafe impl Send for AtspiA11y {}
@@ -94,7 +97,10 @@ impl AtspiA11y {
         let name = CString::new(display).unwrap();
         let dpy = unsafe { xlib::XOpenDisplay(name.as_ptr()) };
         assert!(!dpy.is_null());
-        Self { display: dpy }
+        Self {
+            display: dpy,
+            elements: std::sync::Mutex::new(None),
+        }
     }
 }
 
@@ -168,15 +174,22 @@ impl A11yBackend for AtspiA11y {
         }
     }
 
-    async fn accessibility_tree(&self, _pid: Option<u32>) -> Result<lxs_core::AccessibilityTree, LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<lxs_core::AccessibilityTree, LxsError> {
+        let pid = pid.ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?;
+        let walked = atspi::walk_tree(pid).await?;
+        let tree = atspi::accessibility_tree(&walked);
+        *self.elements.lock().unwrap() = Some(walked);
+        Ok(tree)
     }
 
-    async fn element_bounds(&self, _pid: u32, _index: usize) -> Result<Bounds, LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn element_bounds(&self, _pid: u32, index: usize) -> Result<Bounds, LxsError> {
+        let elements = self.elements.lock().unwrap();
+        let list = elements.as_ref().ok_or(LxsError::NotImplemented)?;
+        let element = list.get(index).ok_or(LxsError::NotImplemented)?;
+        element.bounds.clone().ok_or(LxsError::NotImplemented)
     }
 
-    async fn perform_action(&self, _pid: u32, _index: usize, _action: &str) -> Result<(), LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError> {
+        atspi::perform_action(pid, index, action).await
     }
 }

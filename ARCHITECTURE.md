@@ -87,7 +87,7 @@ No platform-specific adapter is required. External sandboxes interact through st
 ```text
 linux-x11-sandbox/
 ├── Cargo.toml                  # workspace root
-└── crates/
+└── lxs/
     ├── lxs-core/               # types, errors, config, Driver trait
     ├── lxs-action/             # native input backend (XTest / XI2)
     ├── lxs-state/              # native state backends (capture + a11y)
@@ -119,6 +119,10 @@ lxs-core
 ```
 
 No reverse dependencies.
+
+### 4.3 AT-SPI Runtime Alignment
+
+Following cua-driver's practice, launched applications inherit accessibility-enabling environment variables (`ACCESSIBILITY_ENABLED=1`, `NO_AT_BRIDGE=0`, `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`, `QT_ACCESSIBILITY=1`). Chromium-family browsers automatically receive `--force-renderer-accessibility`. This matches cua-driver's handling of different toolkits/runtimes so that AT-SPI trees are populated without requiring global screen-reader settings.
 
 ## 5. Core Abstractions
 
@@ -179,25 +183,25 @@ Defined in `lxs-core`, implemented by `lxs-action` and `lxs-state`:
 ```rust
 #[async_trait]
 pub trait InputBackend: Send + Sync {
-    async fn click(&mut self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxsError>;
-    async fn move_mouse(&mut self, x: i32, y: i32) -> Result<(), LxsError>;
-    async fn scroll(&mut self, dx: i32, dy: i32) -> Result<(), LxsError>;
-    async fn type_text(&mut self, text: &str) -> Result<(), LxsError>;
-    async fn key(&mut self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
+    async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxsError>;
+    async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxsError>;
+    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError>;
+    async fn type_text(&self, text: &str) -> Result<(), LxsError>;
+    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
 }
 
 #[async_trait]
 pub trait CaptureBackend: Send + Sync {
-    async fn screenshot(&mut self) -> Result<Screenshot, LxsError>;
-    async fn screenshot_region(&mut self, region: Rect) -> Result<Screenshot, LxsError>;
+    async fn screenshot(&self) -> Result<Screenshot, LxsError>;
+    async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError>;
 }
 
 #[async_trait]
 pub trait A11yBackend: Send + Sync {
-    async fn window_state(&mut self) -> Result<WindowState, LxsError>;
-    async fn accessibility_tree(&mut self, pid: Option<u32>) -> Result<AccessibilityTree, LxsError>;
-    async fn element_bounds(&mut self, pid: u32, index: usize) -> Result<Bounds, LxsError>;
-    async fn perform_action(&mut self, pid: u32, index: usize, action: &str) -> Result<(), LxsError>;
+    async fn window_state(&self) -> Result<WindowState, LxsError>;
+    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxsError>;
+    async fn element_bounds(&self, pid: u32, index: usize) -> Result<Bounds, LxsError>;
+    async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError>;
 }
 ```
 

@@ -9,3 +9,5 @@ lxs-core = { workspace = true }
 async-trait = { workspace = true }
 x11 = { workspace = true }
 image = { workspace = true }
+atspi = { workspace = true }
+tokio = { workspace = true }
