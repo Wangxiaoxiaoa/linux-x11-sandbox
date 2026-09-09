@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use image::{ImageEncoder, RgbImage};
 use lxs_core::{A11yBackend, Bounds, CaptureBackend, LxsError, Rect, Screenshot, WindowState};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use x11::xlib;
 
 pub struct X11Capture {
@@ -82,18 +82,90 @@ impl CaptureBackend for X11Capture {
     }
 }
 
-pub struct AtspiA11y;
+pub struct AtspiA11y {
+    display: *mut xlib::Display,
+}
+
+unsafe impl Send for AtspiA11y {}
+unsafe impl Sync for AtspiA11y {}
 
 impl AtspiA11y {
-    pub fn new(_display: &str) -> Self {
-        Self
+    pub fn new(display: &str) -> Self {
+        let name = CString::new(display).unwrap();
+        let dpy = unsafe { xlib::XOpenDisplay(name.as_ptr()) };
+        assert!(!dpy.is_null());
+        Self { display: dpy }
+    }
+}
+
+impl Drop for AtspiA11y {
+    fn drop(&mut self) {
+        unsafe {
+            xlib::XCloseDisplay(self.display);
+        }
     }
 }
 
 #[async_trait]
 impl A11yBackend for AtspiA11y {
     async fn window_state(&self) -> Result<WindowState, LxsError> {
-        Err(LxsError::NotImplemented)
+        unsafe {
+            let screen = xlib::XDefaultScreen(self.display);
+            let root = xlib::XRootWindow(self.display, screen);
+            let net_active = xlib::XInternAtom(self.display, c"_NET_ACTIVE_WINDOW".as_ptr(), xlib::False);
+
+            let mut actual_type = 0;
+            let mut actual_format = 0;
+            let mut nitems = 0;
+            let mut bytes_after = 0;
+            let mut prop: *mut u8 = std::ptr::null_mut();
+
+            xlib::XGetWindowProperty(
+                self.display,
+                root,
+                net_active,
+                0,
+                1,
+                xlib::False,
+                xlib::XA_WINDOW,
+                &mut actual_type,
+                &mut actual_format,
+                &mut nitems,
+                &mut bytes_after,
+                &mut prop,
+            );
+
+            let mut title = None;
+            if !prop.is_null() && nitems > 0 {
+                let window = *(prop as *const xlib::Window);
+                xlib::XFree(prop as *mut _);
+
+                let net_name = xlib::XInternAtom(self.display, c"_NET_WM_NAME".as_ptr(), xlib::False);
+                let utf8 = xlib::XInternAtom(self.display, c"UTF8_STRING".as_ptr(), xlib::False);
+
+                xlib::XGetWindowProperty(
+                    self.display,
+                    window,
+                    net_name,
+                    0,
+                    1024,
+                    xlib::False,
+                    utf8,
+                    &mut actual_type,
+                    &mut actual_format,
+                    &mut nitems,
+                    &mut bytes_after,
+                    &mut prop,
+                );
+
+                if !prop.is_null() && nitems > 0 {
+                    title = CStr::from_ptr(prop as *const i8).to_str().ok().map(String::from);
+                    xlib::XFree(prop as *mut _);
+                }
+            }
+
+            Ok(WindowState { title })
+        }
     }
 
     async fn accessibility_tree(&self, _pid: Option<u32>) -> Result<lxs_core::AccessibilityTree, LxsError> {

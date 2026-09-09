@@ -114,6 +114,7 @@ impl McpServer {
                 "lxs_input_type" => self.input_type(args).await,
                 "lxs_input_key" => self.input_key(args).await,
                 "lxs_capture_screenshot" => self.screenshot(args).await,
+                "lxs_state_window" => self.state_window(args).await,
                 _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
             }
         });
@@ -234,6 +235,13 @@ impl McpServer {
         }))
     }
 
+    async fn state_window(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id)?;
+        let state = driver.window_state().await?;
+        Ok(json!({ "title": state.title }))
+    }
+
     fn find_driver(&self, id: &str) -> Result<Arc<dyn Driver>, LxsError> {
         let display = self.find_display(id)?;
         let driver = display.lock().unwrap().driver();
@@ -309,6 +317,11 @@ fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "lxs_capture_screenshot",
             "description": "Take a screenshot",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_state_window",
+            "description": "Get the active window title",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
         }),
     ]
