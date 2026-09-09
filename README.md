@@ -25,12 +25,11 @@ Requires:
 - Rust toolchain
 - `xvfb`
 - `openbox`
-- `libx11-dev` and `libxtst-dev` (for Xlib XTest input at build time)
 
 On Debian/Ubuntu:
 
 ```bash
-sudo apt-get install -y xvfb openbox libx11-dev libxtst-dev
+sudo apt-get install -y xvfb openbox
 ```
 
 Build the MCP server:
