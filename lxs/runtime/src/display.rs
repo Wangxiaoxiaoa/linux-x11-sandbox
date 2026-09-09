@@ -6,10 +6,18 @@ use lxs_driver::NativeDriver;
 
 use crate::process::ManagedProcess;
 use crate::wm::OpenboxWM;
-use crate::xserver::XvfbBackend;
+use crate::xserver::{XephyrBackend, XvfbBackend};
+
+#[derive(Clone, Default)]
+pub enum Backend {
+    #[default]
+    Xvfb,
+    Xephyr,
+}
 
 #[derive(Clone)]
 pub struct DisplayConfig {
+    pub backend: Backend,
     pub width: u32,
     pub height: u32,
     pub depth: u32,
@@ -18,6 +26,7 @@ pub struct DisplayConfig {
 impl Default for DisplayConfig {
     fn default() -> Self {
         Self {
+            backend: Backend::default(),
             width: 1280,
             height: 800,
             depth: 24,
@@ -42,8 +51,12 @@ impl Display {
         display: String,
         config: DisplayConfig,
     ) -> Result<Self, LxsError> {
-        let xserver =
-            XvfbBackend::start(&display, config.width, config.height, config.depth).await?;
+        let xserver = match config.backend {
+            Backend::Xvfb => {
+                XvfbBackend::start(&display, config.width, config.height, config.depth).await?
+            }
+            Backend::Xephyr => XephyrBackend::start(&display, config.width, config.height).await?,
+        };
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 

@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
 use lxs_core::{Driver, LxsError, MouseButton, Rect};
-use lxs_runtime::{Display, DisplayConfig, Runtime};
+use lxs_runtime::{Backend, Display, DisplayConfig, Runtime};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -136,11 +136,21 @@ impl McpServer {
         }
     }
 
-    async fn create_display(&self, _args: &Value) -> Result<Value, LxsError> {
-        let display = self
-            .runtime
-            .create_display(DisplayConfig::default())
-            .await?;
+    async fn create_display(&self, args: &Value) -> Result<Value, LxsError> {
+        let mut config = DisplayConfig::default();
+        if let Some(backend) = args["backend"].as_str() {
+            config.backend = match backend {
+                "xvfb" => Backend::Xvfb,
+                "xephyr" => Backend::Xephyr,
+                _ => {
+                    return Err(LxsError::InvalidArgument(format!(
+                        "unknown backend: {backend}"
+                    )))
+                }
+            };
+        }
+
+        let display = self.runtime.create_display(config).await?;
         let id = display.id().to_string();
         let display_str = display.display().to_string();
         self.displays
@@ -460,8 +470,8 @@ fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
             "name": "lxs_display_create",
-            "description": "Create a new X11 display",
-            "inputSchema": { "type": "object" }
+            "description": "Create a new X11 display (backend: xvfb or xephyr)",
+            "inputSchema": { "type": "object", "properties": { "backend": { "type": "string", "enum": ["xvfb", "xephyr"] } } }
         }),
         json!({
             "name": "lxs_display_destroy",

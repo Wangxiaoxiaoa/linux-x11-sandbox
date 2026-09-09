@@ -20,3 +20,23 @@ impl XvfbBackend {
         .await
     }
 }
+
+pub struct XephyrBackend;
+
+impl XephyrBackend {
+    pub async fn start(display: &str, width: u32, height: u32) -> Result<ManagedProcess, LxsError> {
+        ManagedProcess::spawn(
+            "Xephyr",
+            &[
+                display,
+                "-screen",
+                &format!("{}x{}", width, height),
+                "-ac",
+                "-br",
+                "-noreset",
+            ],
+            &[("DISPLAY", display)],
+        )
+        .await
+    }
+}
