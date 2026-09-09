@@ -45,10 +45,18 @@ pub struct Display {
 }
 
 impl Display {
-    pub async fn create(id: String, display: String, config: DisplayConfig) -> Result<Self, LxsError> {
+    pub async fn create(
+        id: String,
+        display: String,
+        config: DisplayConfig,
+    ) -> Result<Self, LxsError> {
         let xserver = match config.backend {
-            Backend::Xvfb => XvfbBackend::start(&display, config.width, config.height, config.depth).await?,
-            Backend::Xephyr => crate::xserver::XephyrBackend::start(&display, config.width, config.height).await?,
+            Backend::Xvfb => {
+                XvfbBackend::start(&display, config.width, config.height, config.depth).await?
+            }
+            Backend::Xephyr => {
+                crate::xserver::XephyrBackend::start(&display, config.width, config.height).await?
+            }
         };
 
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -81,19 +89,22 @@ impl Display {
     }
 
     pub async fn launch_app(&self, command: &str, args: &[&str]) -> Result<u32, LxsError> {
-        let proc = ManagedProcess::spawn_with_env(command, args, &[("DISPLAY", &self.display)]).await?;
+        let proc =
+            ManagedProcess::spawn_with_env(command, args, &[("DISPLAY", &self.display)]).await?;
         let pid = proc.pid();
         self.apps.lock().unwrap().push(proc);
         Ok(pid)
     }
 
     pub async fn terminate_app(&self, pid: u32) -> Result<(), LxsError> {
-        let mut apps = self.apps.lock().unwrap();
-        let pos = apps
-            .iter()
-            .position(|p| p.pid() == pid)
-            .ok_or_else(|| LxsError::DisplayNotFound(format!("pid {}", pid)))?;
-        let mut proc = apps.remove(pos);
+        let mut proc = {
+            let mut apps = self.apps.lock().unwrap();
+            let pos = apps
+                .iter()
+                .position(|p| p.pid() == pid)
+                .ok_or_else(|| LxsError::DisplayNotFound(format!("pid {}", pid)))?;
+            apps.remove(pos)
+        };
         proc.kill().await
     }
 
@@ -111,11 +122,13 @@ impl Display {
     }
 
     pub async fn destroy(&mut self) -> Result<(), LxsError> {
-        let mut apps = self.apps.lock().unwrap();
+        let mut apps = {
+            let mut apps = self.apps.lock().unwrap();
+            std::mem::take(&mut *apps)
+        };
         for app in apps.iter_mut() {
             let _ = app.kill().await;
         }
-        apps.clear();
         let _ = self.wm.kill().await;
         let _ = self.xserver.kill().await;
         Ok(())

@@ -125,7 +125,8 @@ impl A11yBackend for AtspiA11y {
         unsafe {
             let screen = xlib::XDefaultScreen(self.display);
             let root = xlib::XRootWindow(self.display, screen);
-            let net_active = xlib::XInternAtom(self.display, c"_NET_ACTIVE_WINDOW".as_ptr(), xlib::False);
+            let net_active =
+                xlib::XInternAtom(self.display, c"_NET_ACTIVE_WINDOW".as_ptr(), xlib::False);
 
             let mut actual_type = 0;
             let mut actual_format = 0;
@@ -153,7 +154,8 @@ impl A11yBackend for AtspiA11y {
                 let window = *(prop as *const xlib::Window);
                 xlib::XFree(prop as *mut _);
 
-                let net_name = xlib::XInternAtom(self.display, c"_NET_WM_NAME".as_ptr(), xlib::False);
+                let net_name =
+                    xlib::XInternAtom(self.display, c"_NET_WM_NAME".as_ptr(), xlib::False);
                 let utf8 = xlib::XInternAtom(self.display, c"UTF8_STRING".as_ptr(), xlib::False);
 
                 xlib::XGetWindowProperty(
@@ -172,7 +174,10 @@ impl A11yBackend for AtspiA11y {
                 );
 
                 if !prop.is_null() && nitems > 0 {
-                    title = CStr::from_ptr(prop as *const i8).to_str().ok().map(String::from);
+                    title = CStr::from_ptr(prop as *const i8)
+                        .to_str()
+                        .ok()
+                        .map(String::from);
                     xlib::XFree(prop as *mut _);
                 }
             }
@@ -181,7 +186,10 @@ impl A11yBackend for AtspiA11y {
         }
     }
 
-    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<lxs_core::AccessibilityTree, LxsError> {
+    async fn accessibility_tree(
+        &self,
+        pid: Option<u32>,
+    ) -> Result<lxs_core::AccessibilityTree, LxsError> {
         let pid = pid.ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?;
         let walked = atspi::walk_tree(pid).await?;
         let tree = atspi::accessibility_tree(&walked);

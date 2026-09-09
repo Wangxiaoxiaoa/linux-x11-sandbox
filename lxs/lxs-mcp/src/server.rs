@@ -1,5 +1,6 @@
 use std::io::{self, BufRead, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use lxs_core::{Driver, LxsError, MouseButton, Rect};
 use lxs_runtime::{Display, DisplayConfig, Runtime};
@@ -9,6 +10,7 @@ use serde_json::{json, Value};
 pub struct McpServer {
     runtime: Arc<Runtime>,
     displays: Mutex<Vec<Arc<Mutex<Display>>>>,
+
     tokio: tokio::runtime::Runtime,
 }
 
@@ -137,10 +139,16 @@ impl McpServer {
     }
 
     async fn create_display(&self, _args: &Value) -> Result<Value, LxsError> {
-        let display = self.runtime.create_display(DisplayConfig::default()).await?;
+        let display = self
+            .runtime
+            .create_display(DisplayConfig::default())
+            .await?;
         let id = display.id().to_string();
         let display_str = display.display().to_string();
-        self.displays.lock().unwrap().push(Arc::new(Mutex::new(display)));
+        self.displays
+            .lock()
+            .await
+            .push(Arc::new(Mutex::new(display)));
         Ok(json!({
             "display_id": id,
             "display": display_str
@@ -148,91 +156,140 @@ impl McpServer {
     }
 
     async fn destroy_display(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let display = self.find_display(id)?;
-        display.lock().unwrap().destroy().await?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let display = self.find_display(id).await?;
+        display.lock().await.destroy().await?;
 
-        let mut displays = self.displays.lock().unwrap();
-        displays.retain(|d| d.lock().unwrap().id() != id);
+        let mut displays = self.displays.lock().await;
+        let mut kept = Vec::new();
+        for d in displays.drain(..) {
+            if d.lock().await.id() != id {
+                kept.push(d);
+            }
+        }
+        *displays = kept;
         Ok(json!({ "success": true }))
     }
 
     async fn app_launch(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let command = args["command"].as_str().ok_or_else(|| LxsError::InvalidArgument("command required".into()))?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let command = args["command"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("command required".into()))?;
         let args_vec: Vec<String> = args["args"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let arg_refs: Vec<&str> = args_vec.iter().map(|s| s.as_str()).collect();
 
-        let display = self.find_display(id)?;
-        let pid = display.lock().unwrap().launch_app(command, &arg_refs).await?;
+        let display = self.find_display(id).await?;
+        let pid = display.lock().await.launch_app(command, &arg_refs).await?;
         Ok(json!({ "pid": pid }))
     }
 
     async fn app_terminate(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
+            as u32;
 
-        let display = self.find_display(id)?;
-        display.lock().unwrap().terminate_app(pid).await?;
+        let display = self.find_display(id).await?;
+        display.lock().await.terminate_app(pid).await?;
         Ok(json!({ "success": true }))
     }
 
     async fn app_list(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let display = self.find_display(id)?;
-        let pids = display.lock().unwrap().list_apps();
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let display = self.find_display(id).await?;
+        let pids = display.lock().await.list_apps();
         Ok(json!({ "pids": pids }))
     }
 
     async fn click(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let x = args["x"].as_i64().ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
-        let y = args["y"].as_i64().ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let x = args["x"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
+        let y = args["y"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         driver.click(x, y, MouseButton::Left, 1).await?;
         Ok(json!({ "success": true }))
     }
 
     async fn move_mouse(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let x = args["x"].as_i64().ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
-        let y = args["y"].as_i64().ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let x = args["x"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
+        let y = args["y"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         driver.move_mouse(x, y).await?;
         Ok(json!({ "success": true }))
     }
 
     async fn input_type(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let text = args["text"].as_str().ok_or_else(|| LxsError::InvalidArgument("text required".into()))?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let text = args["text"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("text required".into()))?;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         driver.type_text(text).await?;
         Ok(json!({ "success": true }))
     }
 
     async fn input_key(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let key = args["key"].as_str().ok_or_else(|| LxsError::InvalidArgument("key required".into()))?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let key = args["key"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("key required".into()))?;
         let modifiers: Vec<String> = args["modifiers"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let mod_refs: Vec<&str> = modifiers.iter().map(|s| s.as_str()).collect();
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         driver.key(key, &mod_refs).await?;
         Ok(json!({ "success": true }))
     }
 
     async fn screenshot(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let driver = self.find_driver(id)?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
         let shot = driver.screenshot().await?;
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &shot.data);
         Ok(json!({
@@ -242,13 +299,23 @@ impl McpServer {
     }
 
     async fn screenshot_region(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let x = args["x"].as_i64().ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
-        let y = args["y"].as_i64().ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
-        let w = args["w"].as_u64().ok_or_else(|| LxsError::InvalidArgument("w required".into()))? as u32;
-        let h = args["h"].as_u64().ok_or_else(|| LxsError::InvalidArgument("h required".into()))? as u32;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let x = args["x"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
+        let y = args["y"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+        let w = args["w"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("w required".into()))? as u32;
+        let h = args["h"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("h required".into()))? as u32;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         let shot = driver.screenshot_region(Rect { x, y, w, h }).await?;
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &shot.data);
         Ok(json!({
@@ -258,19 +325,23 @@ impl McpServer {
     }
 
     async fn scroll(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
         let dx = args["dx"].as_i64().unwrap_or(0) as i32;
         let dy = args["dy"].as_i64().unwrap_or(0) as i32;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         driver.scroll(dx, dy).await?;
         Ok(json!({ "success": true }))
     }
 
     async fn display_info(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let display = self.find_display(id)?;
-        let info = display.lock().unwrap().info();
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let display = self.find_display(id).await?;
+        let info = display.lock().await.info();
         Ok(json!({
             "display": info.display,
             "width": info.width,
@@ -280,17 +351,24 @@ impl McpServer {
     }
 
     async fn state_window(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let driver = self.find_driver(id)?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
         let state = driver.window_state().await?;
         Ok(json!({ "title": state.title }))
     }
 
     async fn state_tree(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
+            as u32;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         let tree = driver.accessibility_tree(Some(pid)).await?;
         let elements: Vec<Value> = tree
             .elements
@@ -308,11 +386,19 @@ impl McpServer {
     }
 
     async fn element_bounds(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
-        let index = args["index"].as_u64().ok_or_else(|| LxsError::InvalidArgument("index required".into()))? as usize;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
+            as u32;
+        let index = args["index"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("index required".into()))?
+            as usize;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         let bounds = driver.element_bounds(pid, index).await?;
         Ok(json!({
             "x": bounds.x,
@@ -323,26 +409,40 @@ impl McpServer {
     }
 
     async fn perform_action(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let pid = args["pid"].as_u64().ok_or_else(|| LxsError::InvalidArgument("pid required".into()))? as u32;
-        let index = args["index"].as_u64().ok_or_else(|| LxsError::InvalidArgument("index required".into()))? as usize;
-        let action = args["action"].as_str().ok_or_else(|| LxsError::InvalidArgument("action required".into()))?;
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
+            as u32;
+        let index = args["index"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("index required".into()))?
+            as usize;
+        let action = args["action"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("action required".into()))?;
 
-        let driver = self.find_driver(id)?;
+        let driver = self.find_driver(id).await?;
         driver.perform_action(pid, index, action).await?;
         Ok(json!({ "success": true }))
     }
 
-    fn find_driver(&self, id: &str) -> Result<Arc<dyn Driver>, LxsError> {
-        let display = self.find_display(id)?;
-        let driver = display.lock().unwrap().driver();
+    async fn find_driver(&self, id: &str) -> Result<Arc<dyn Driver>, LxsError> {
+        let display = self.find_display(id).await?;
+        let driver = display.lock().await.driver();
         Ok(driver)
     }
 
-    fn find_display(&self, id: &str) -> Result<Arc<Mutex<Display>>, LxsError> {
-        let displays = self.displays.lock().unwrap();
-        let display = displays.iter().find(|d| d.lock().unwrap().id() == id).ok_or_else(|| LxsError::DisplayNotFound(id.into()))?;
-        Ok(Arc::clone(display))
+    async fn find_display(&self, id: &str) -> Result<Arc<Mutex<Display>>, LxsError> {
+        let displays = self.displays.lock().await;
+        for display in displays.iter() {
+            if display.lock().await.id() == id {
+                return Ok(Arc::clone(display));
+            }
+        }
+        Err(LxsError::DisplayNotFound(id.into()))
     }
 }
 

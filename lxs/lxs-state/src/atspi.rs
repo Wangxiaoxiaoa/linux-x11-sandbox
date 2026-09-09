@@ -59,7 +59,9 @@ async fn find_app<'a>(
     root: &'a AccessibleProxy<'a>,
     pid: u32,
 ) -> Option<AccessibleProxy<'a>> {
-    let dbus = atspi::zbus::fdo::DBusProxy::new(conn.connection()).await.ok()?;
+    let dbus = atspi::zbus::fdo::DBusProxy::new(conn.connection())
+        .await
+        .ok()?;
 
     let children = root.get_children().await.ok()?;
     for child_ref in children {
@@ -70,13 +72,19 @@ async fn find_app<'a>(
     None
 }
 
-async fn pid_of(dbus: &atspi::zbus::fdo::DBusProxy<'_>, oref: &atspi::ObjectRefOwned) -> Option<u32> {
+async fn pid_of(
+    dbus: &atspi::zbus::fdo::DBusProxy<'_>,
+    oref: &atspi::ObjectRefOwned,
+) -> Option<u32> {
     let name = oref.name_as_str()?;
     let bus = atspi::zbus::names::BusName::try_from(name.to_owned()).ok()?;
     dbus.get_connection_unix_process_id(bus).await.ok()
 }
 
-pub(crate) async fn walk<'a>(conn: &'a AccessibilityConnection, root: &'a AccessibleProxy<'a>) -> Vec<Element> {
+pub(crate) async fn walk<'a>(
+    conn: &'a AccessibilityConnection,
+    root: &'a AccessibleProxy<'a>,
+) -> Vec<Element> {
     let mut elements = Vec::new();
     let mut stack: Vec<(AccessibleProxy<'a>, usize)> = vec![(root.clone(), 0)];
 
@@ -177,14 +185,17 @@ pub async fn perform_action(pid: u32, index: usize, action: &str) -> Result<(), 
         .ok_or(LxsError::NotImplemented)?;
 
     let proxies = node.proxies().await.map_err(|_| LxsError::NotImplemented)?;
-    let action_proxy = proxies.action().await.map_err(|_| LxsError::NotImplemented)?;
+    let action_proxy = proxies
+        .action()
+        .await
+        .map_err(|_| LxsError::NotImplemented)?;
 
     let n = action_proxy.n_actions().await.unwrap_or(0);
     for i in 0..n {
         if let Ok(name) = action_proxy.get_name(i).await {
             if name.trim() == action.trim() {
                 action_proxy
-                    .do_action(i as i32)
+                    .do_action(i)
                     .await
                     .map_err(|_| LxsError::NotImplemented)?;
                 return Ok(());

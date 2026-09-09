@@ -56,7 +56,10 @@ impl Driver for NativeDriver {
         self.a11y.window_state().await
     }
 
-    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<lxs_core::AccessibilityTree, LxsError> {
+    async fn accessibility_tree(
+        &self,
+        pid: Option<u32>,
+    ) -> Result<lxs_core::AccessibilityTree, LxsError> {
         self.a11y.accessibility_tree(pid).await
     }
 

@@ -14,7 +14,8 @@ fn chromium_family_program(prog: &str) -> bool {
 
 fn ensure_accessibility_args(cmd: &str, args: &[&str]) -> Vec<String> {
     let mut result: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
-    if chromium_family_program(cmd) && !result.iter().any(|a| a == "--force-renderer-accessibility") {
+    if chromium_family_program(cmd) && !result.iter().any(|a| a == "--force-renderer-accessibility")
+    {
         result.push("--force-renderer-accessibility".into());
     }
     result
@@ -44,7 +45,11 @@ impl ManagedProcess {
         Ok(Self { child, pid })
     }
 
-    pub async fn spawn_with_env(cmd: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Self, LxsError> {
+    pub async fn spawn_with_env(
+        cmd: &str,
+        args: &[&str],
+        envs: &[(&str, &str)],
+    ) -> Result<Self, LxsError> {
         let effective_args = ensure_accessibility_args(cmd, args);
         let mut command = Command::new(cmd);
         command
