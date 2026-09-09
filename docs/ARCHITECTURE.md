@@ -1,5 +1,7 @@
 # linux-x11-sandbox Architecture
 
+> **Implementation status:** This document describes the target architecture. The current MVP implements the MCP stdio server, native X11/XTest driver, Xvfb/Xephyr + openbox runtime, and AT-SPI state access. Items marked as reserved or future (CuaDriver adapter, HTTP/SSE, C FFI, runtime submodules) are not yet implemented.
+
 ## 1. Overview
 
 `linux-x11-sandbox` is a Rust-based Linux GUI automation sandbox platform. It creates and manages multiple isolated X11 display environments, each capable of running GUI applications and exposing built-in automation primitives (mouse, keyboard, screenshot, AT-SPI state).
@@ -87,13 +89,16 @@ No platform-specific adapter is required. External sandboxes interact through st
 ```text
 linux-x11-sandbox/
 ├── Cargo.toml                  # workspace root
-└── lxs/
-    ├── lxs-core/               # types, errors, config, Driver trait
-    ├── lxs-action/             # native input backend (XTest / XI2)
-    ├── lxs-state/              # native state backends (capture + a11y)
-    ├── lxs-driver/             # Driver implementations (native + optional cua)
-    ├── lxs-runtime/            # runtime engine (display, xserver, wm, process)
-    └── lxs-mcp/                # MCP server + binary entry
+├── docs/                       # design and usage documentation
+├── .github/                    # CI workflows
+├── lxs/
+│   ├── core/                   # types, errors, config, Driver trait
+│   ├── action/                 # native input backend (XTest / XI2)
+│   ├── state/                  # native state backends (capture + a11y)
+│   ├── driver/                 # Driver implementations (native + optional cua)
+│   ├── runtime/                # runtime engine (display, xserver, wm, process)
+│   └── mcp/                    # MCP server + binary entry
+└── lxs/mcp/tests/              # MCP integration tests
 ```
 
 ### 4.1 Crate Responsibilities

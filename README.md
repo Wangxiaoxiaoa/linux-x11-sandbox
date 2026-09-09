@@ -82,7 +82,7 @@ The server speaks [MCP](https://modelcontextprotocol.io/) over stdio.
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for crate layout, trait design, and integration patterns.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for crate layout, trait design, and integration patterns.
 
 ## License
 

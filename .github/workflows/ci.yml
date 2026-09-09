@@ -48,6 +48,3 @@ jobs:
 
       - name: cargo test
         run: cargo test
-
-      - name: mcp smoke test
-        run: python3 scripts/mcp_smoke.py
