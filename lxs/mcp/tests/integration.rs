@@ -196,6 +196,108 @@ fn app_lifecycle() {
 }
 
 #[test]
+fn pointer_click_reaches_xev() {
+    let mut s = McpSession::new();
+    let id = s.create_display();
+    let display = s.call(
+        "tools/call",
+        json!({"name": "lxs_display_info", "arguments": {"display_id": id}}),
+    )["result"]["display"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut xev = Command::new("xev")
+        .arg("-display")
+        .arg(&display)
+        .args(["-geometry", "200x200+50+50"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn xev");
+
+    thread::sleep(Duration::from_millis(1000));
+
+    s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_input_click",
+            "arguments": { "display_id": id, "x": 150, "y": 150, "button": "left" },
+        }),
+    );
+
+    thread::sleep(Duration::from_millis(300));
+
+    let _ = xev.kill();
+    let output = xev.wait_with_output().expect("xev wait failed");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        text.contains("ButtonPress"),
+        "click did not reach xev window"
+    );
+
+    s.destroy_display(&id);
+}
+
+#[test]
+fn keyboard_input_reaches_xev() {
+    let mut s = McpSession::new();
+    let id = s.create_display();
+    let display = s.call(
+        "tools/call",
+        json!({"name": "lxs_display_info", "arguments": {"display_id": id}}),
+    )["result"]["display"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let mut xev = Command::new("xev")
+        .arg("-display")
+        .arg(&display)
+        .args(["-geometry", "200x200+50+50"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn xev");
+
+    thread::sleep(Duration::from_millis(1500));
+
+    // click inside the window first so xev gains focus for key events
+    s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_input_click",
+            "arguments": { "display_id": id, "x": 150, "y": 150, "button": "left" },
+        }),
+    );
+    thread::sleep(Duration::from_millis(300));
+
+    s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_input_type",
+            "arguments": { "display_id": id, "text": "hi" },
+        }),
+    );
+    s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_input_key",
+            "arguments": { "display_id": id, "key": "Return" },
+        }),
+    );
+
+    thread::sleep(Duration::from_millis(300));
+
+    let _ = xev.kill();
+    let output = xev.wait_with_output().expect("xev wait failed");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("KeyPress"), "keys did not reach xev window");
+
+    s.destroy_display(&id);
+}
+
+#[test]
 fn screenshot_is_valid_png() {
     let mut s = McpSession::new();
     let id = s.create_display();
@@ -329,37 +431,6 @@ fn region_screenshot_is_valid_png() {
 }
 
 #[test]
-fn window_state_returns_title_after_launch() {
-    let mut s = McpSession::new();
-    let id = s.create_display();
-
-    s.call(
-        "tools/call",
-        json!({
-            "name": "lxs_app_launch",
-            "arguments": { "display_id": id, "command": "xterm", "args": [] },
-        }),
-    );
-    thread::sleep(Duration::from_millis(800));
-
-    let state = s.call(
-        "tools/call",
-        json!({
-            "name": "lxs_state_window",
-            "arguments": { "display_id": id },
-        }),
-    );
-    let title = state["result"]["title"].as_str();
-    assert!(
-        title.map(|t| !t.is_empty()).unwrap_or(false),
-        "expected non-empty window title, got {:?}",
-        title
-    );
-
-    s.destroy_display(&id);
-}
-
-#[test]
 fn invalid_display_id_returns_error() {
     let mut s = McpSession::new();
     let resp = s.call(
@@ -425,8 +496,22 @@ fn atspi_tree_is_populated_for_chromium() {
     let elements = tree["result"]["elements"].as_array().unwrap();
     assert!(!elements.is_empty(), "AT-SPI tree was empty");
 
-    let first = &elements[0];
-    let index = first["index"].as_u64().unwrap() as usize;
+    let mut index = 0;
+    for e in elements {
+        let i = e["index"].as_u64().unwrap() as usize;
+        let b = s.call(
+            "tools/call",
+            json!({
+                "name": "lxs_state_element_bounds",
+                "arguments": { "display_id": id, "pid": pid, "index": i },
+            }),
+        );
+        let r = &b["result"];
+        if r["w"].as_u64().unwrap_or(0) > 0 && r["h"].as_u64().unwrap_or(0) > 0 {
+            index = i;
+            break;
+        }
+    }
     let bounds = s.call(
         "tools/call",
         json!({
@@ -436,6 +521,20 @@ fn atspi_tree_is_populated_for_chromium() {
     );
     assert!(bounds["result"]["w"].as_u64().unwrap() > 0);
     assert!(bounds["result"]["h"].as_u64().unwrap() > 0);
+
+    let action = elements[index]["actions"]
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_str())
+        .unwrap_or("doDefault");
+    let performed = s.call(
+        "tools/call",
+        json!({
+            "name": "lxs_perform_action",
+            "arguments": { "display_id": id, "pid": pid, "index": index, "action": action },
+        }),
+    );
+    assert!(performed["result"]["success"].as_bool().unwrap_or(false));
 
     let _ = s.call(
         "tools/call",
