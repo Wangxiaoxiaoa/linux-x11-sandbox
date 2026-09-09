@@ -15,16 +15,11 @@
 
 `linux-x11-sandbox` 在独立的 X11 display 中运行 GUI 应用。每个沙盒拥有独立的 X 服务器、窗口管理器和应用进程。display 之间不共享窗口、焦点、剪贴板或桌面 shell，只共享底层文件系统。
 
-## 特性
+它可以通过三种方式使用：
 
-- **每个沙盒一个独立 X11 display** —— 无头 `Xvfb` 或可见 `Xephyr` + `openbox`
-- **内置原生自动化驱动**
-  - 鼠标：移动、点击、滚动
-  - 键盘：输入文本、组合键
-  - 截图：全屏和区域截图
-  - AT-SPI 无障碍树、元素边界、动作注入
-- **MCP stdio 服务器**，供智能体接入
-- **Rust SDK**，可嵌入其他项目
+1. **MCP 服务器** —— 接入任何支持 [Model Context Protocol](https://modelcontextprotocol.io/) 的智能体。
+2. **Rust SDK** —— 直接把沙盒和驱动嵌入你的 Rust 项目。
+3. **可组合沙盒层** —— 运行在现有容器/VM 沙盒（Docker、e2b、Daytona 等）内部，为其增加 X11 自动化能力。
 
 ## 架构
 
@@ -45,55 +40,147 @@ sudo apt-get install -y xvfb openbox
 cargo build --release
 ```
 
-可执行文件位于 `target/release/linux-x11-sandbox`。
+MCP 服务器可执行文件位于 `target/release/linux-x11-sandbox`。
 
-## 运行 MCP 服务器
+---
+
+## 1. 作为 MCP 服务器使用
+
+MCP 服务器通过标准输入输出使用 JSON-RPC 2.0。任何兼容 MCP 的智能体都可以启动它。
+
+### 1.1 启动服务器
 
 ```bash
 ./target/release/linux-x11-sandbox
 ```
 
-服务器通过标准输入输出使用 [MCP](https://modelcontextprotocol.io/) 协议。
+### 1.2 注册 skill
 
-## 快速开始
+项目已提供现成 skill：[`skills/linux-x11-sandbox/SKILL.md`](skills/linux-x11-sandbox/SKILL.md)。复制或软链接到智能体的 skill 目录：
 
-创建一个无头 display 并启动应用：
+- **pi**：`~/.pi/agent/skills/linux-x11-sandbox/` 或 `.pi/skills/linux-x11-sandbox/`
+- **Claude Code**：`.claude/skills/linux-x11-sandbox/`
+- **Codex**：`.codex/skills/linux-x11-sandbox/`
+
+```bash
+mkdir -p ~/.pi/agent/skills
+ln -s /path/to/linux-x11-sandbox/skills/linux-x11-sandbox ~/.pi/agent/skills/linux-x11-sandbox
+```
+
+### 1.3 在智能体中注册 MCP 服务器
+
+大多数智能体支持 `mcpServers` 配置。Claude Desktop 示例：
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"demo","version":"0.1.0"}}}
+{
+  "mcpServers": {
+    "linux-x11-sandbox": {
+      "command": "/path/to/linux-x11-sandbox/target/release/linux-x11-sandbox"
+    }
+  }
+}
+```
+
+### 1.4 MCP 工具
+
+连接后，智能体可以调用：
+
+| 工具 | 说明 |
+|------|------|
+| `lxs_display_create` | 创建 display（`backend`: `xvfb` 或 `xephyr`） |
+| `lxs_display_destroy` | 销毁 display 及应用 |
+| `lxs_display_info` | 分辨率与应用数量 |
+| `lxs_app_launch` | 启动应用 |
+| `lxs_app_terminate` | 按 PID 终止应用 |
+| `lxs_app_list` | 列出应用 PID |
+| `lxs_input_click` | 在 `(x, y)` 点击 |
+| `lxs_input_move` | 移动光标 |
+| `lxs_input_scroll` | 滚动 |
+| `lxs_input_type` | 输入文本 |
+| `lxs_input_key` | 按键或组合键 |
+| `lxs_capture_screenshot` | 全屏截图 |
+| `lxs_capture_region` | 区域截图 |
+| `lxs_state_window` | 当前激活窗口标题 |
+| `lxs_state_tree` | AT-SPI 无障碍树 |
+| `lxs_state_element_bounds` | 元素边界 |
+| `lxs_perform_action` | 执行 AT-SPI 动作 |
+
+### 1.5 示例会话
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"agent","version":"1.0"}}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lxs_display_create","arguments":{}}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lxs_app_launch","arguments":{"display_id":"d-99","command":"xterm","args":[]}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lxs_capture_screenshot","arguments":{"display_id":"d-99"}}}
 {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"lxs_display_destroy","arguments":{"display_id":"d-99"}}}
 ```
 
-创建可见的 Xephyr display（需要宿主机 X display，例如 `DISPLAY=:0`）：
+---
 
-```json
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lxs_display_create","arguments":{"backend":"xephyr"}}}
+## 2. 作为 Rust SDK 使用
+
+在 `Cargo.toml` 中引入需要的 crate：
+
+```toml
+[dependencies]
+lxs-core = { path = "path/to/linux-x11-sandbox/lxs/core" }
+lxs-runtime = { path = "path/to/linux-x11-sandbox/lxs/runtime" }
+lxs-driver = { path = "path/to/linux-x11-sandbox/lxs/driver" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
-## MCP 工具
+示例：
 
-| 工具 | 说明 |
-|------|------|
-| `lxs_display_create` | 创建新的 X11 display（`backend`: `xvfb` 或 `xephyr`） |
-| `lxs_display_destroy` | 销毁 display 及其应用 |
-| `lxs_display_info` | 获取 display 分辨率与应用数量 |
-| `lxs_app_launch` | 在指定 display 上启动应用 |
-| `lxs_app_terminate` | 按 PID 终止应用 |
-| `lxs_app_list` | 列出 display 上的运行中应用 |
-| `lxs_input_click` | 在屏幕坐标点击 |
-| `lxs_input_move` | 移动鼠标光标 |
-| `lxs_input_scroll` | 滚动指定增量 |
-| `lxs_input_type` | 输入文本 |
-| `lxs_input_key` | 按下单个键或组合键 |
-| `lxs_capture_screenshot` | 全屏截图 |
-| `lxs_capture_region` | 区域截图 |
-| `lxs_state_window` | 获取当前激活窗口标题 |
-| `lxs_state_tree` | 遍历 AT-SPI 无障碍树 |
-| `lxs_state_element_bounds` | 获取指定索引元素的边界 |
-| `lxs_perform_action` | 对元素执行 AT-SPI 动作 |
+```rust
+use lxs_core::{Driver, Rect};
+use lxs_runtime::{DisplayConfig, Runtime};
+use lxs_driver::NativeDriver;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let runtime = Runtime::new();
+    let display = runtime.create_display(DisplayConfig::default()).await?;
+    let id = display.id().to_string();
+
+    display.launch_app("xterm", &[]).await?;
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    let driver = NativeDriver::new(display.display())?;
+    driver.click(100, 100, lxs_core::MouseButton::Left, 1).await?;
+    let screenshot = driver.screenshot().await?;
+    std::fs::write("screenshot.png", screenshot.data)?;
+
+    display.destroy().await?;
+    Ok(())
+}
+```
+
+`lxs-core` 中的 `Driver` trait 允许替换后端（例如未来可能提供的 `CuaDriver` 适配器）。
+
+---
+
+## 3. 作为可组合沙盒层使用
+
+`linux-x11-sandbox` **不会**替代通用容器或 VM 沙盒。相反，它作为一层 X11 自动化能力运行在这些沙盒内部。
+
+典型部署方式：
+
+```
+Docker / e2b / Daytona / VM
+└── linux-x11-sandbox
+    ├── Xvfb 或 Xephyr
+    ├── openbox
+    └── 目标应用
+```
+
+宿主机只需：
+
+1. 在沙盒镜像里提供 `xvfb`、`openbox` 和构建好的二进制文件。
+2. 把 MCP stdio 服务器暴露给智能体。
+
+这样文件系统/网络隔离仍由外层沙盒负责，而智能体获得一个可交互的真实 GUI 环境。
+
+---
 
 ## 测试
 
