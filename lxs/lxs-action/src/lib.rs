@@ -68,8 +68,23 @@ impl InputBackend for XtestInput {
         Ok(())
     }
 
-    async fn scroll(&self, _dx: i32, _dy: i32) -> Result<(), LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError> {
+        unsafe {
+            let click = |button: u32| {
+                xtest::XTestFakeButtonEvent(self.display, button, xlib::True, xlib::CurrentTime);
+                xtest::XTestFakeButtonEvent(self.display, button, xlib::False, xlib::CurrentTime);
+            };
+
+            for _ in 0..dy.abs() {
+                click(if dy > 0 { xlib::Button5 } else { xlib::Button4 });
+            }
+            for _ in 0..dx.abs() {
+                click(if dx > 0 { 7 } else { 6 });
+            }
+
+            xlib::XFlush(self.display);
+        }
+        Ok(())
     }
 
     async fn type_text(&self, text: &str) -> Result<(), LxsError> {

@@ -35,52 +35,59 @@ impl CaptureBackend for X11Capture {
     async fn screenshot(&self) -> Result<Screenshot, LxsError> {
         unsafe {
             let screen = xlib::XDefaultScreen(self.display);
-            let root = xlib::XRootWindow(self.display, screen);
-            let width = xlib::XDisplayWidth(self.display, screen);
-            let height = xlib::XDisplayHeight(self.display, screen);
-
-            let image = xlib::XGetImage(
-                self.display,
-                root,
-                0,
-                0,
-                width as u32,
-                height as u32,
-                xlib::XAllPlanes(),
-                xlib::ZPixmap,
-            );
-            assert!(!image.is_null());
-
-            let bytes_per_line = (*image).bytes_per_line;
-            let bits_per_pixel = (*image).bits_per_pixel;
-            let data = (*image).data as *const u8;
-            let mut buf = vec![0u8; (width * height * 3) as usize];
-
-            for y in 0..height {
-                for x in 0..width {
-                    let offset = (y * bytes_per_line + x * (bits_per_pixel / 8)) as isize;
-                    let pixel = *(data.offset(offset) as *const u32);
-                    let idx = ((y * width + x) * 3) as usize;
-                    buf[idx] = ((pixel >> 16) & 0xff) as u8;
-                    buf[idx + 1] = ((pixel >> 8) & 0xff) as u8;
-                    buf[idx + 2] = (pixel & 0xff) as u8;
-                }
-            }
-
-            xlib::XDestroyImage(image);
-
-            let img = RgbImage::from_raw(width as u32, height as u32, buf).unwrap();
-            let mut png = Vec::new();
-            image::codecs::png::PngEncoder::new(&mut png)
-                .write_image(&img, width as u32, height as u32, image::ExtendedColorType::Rgb8)
-                .unwrap();
-
-            Ok(Screenshot { data: png })
+            let width = xlib::XDisplayWidth(self.display, screen) as u32;
+            let height = xlib::XDisplayHeight(self.display, screen) as u32;
+            self.capture_rect(0, 0, width, height)
         }
     }
 
-    async fn screenshot_region(&self, _region: Rect) -> Result<Screenshot, LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError> {
+        unsafe { self.capture_rect(region.x, region.y, region.w, region.h) }
+    }
+}
+
+impl X11Capture {
+    unsafe fn capture_rect(&self, x: i32, y: i32, w: u32, h: u32) -> Result<Screenshot, LxsError> {
+        let root = xlib::XRootWindow(self.display, xlib::XDefaultScreen(self.display));
+        let image = xlib::XGetImage(
+            self.display,
+            root,
+            x,
+            y,
+            w,
+            h,
+            xlib::XAllPlanes(),
+            xlib::ZPixmap,
+        );
+        if image.is_null() {
+            return Err(LxsError::InvalidArgument("capture_rect failed".into()));
+        }
+
+        let bytes_per_line = (*image).bytes_per_line;
+        let bits_per_pixel = (*image).bits_per_pixel;
+        let data = (*image).data as *const u8;
+        let mut buf = vec![0u8; (w * h * 3) as usize];
+
+        for row in 0..h as i32 {
+            for col in 0..w as i32 {
+                let offset = (row * bytes_per_line + col * (bits_per_pixel / 8)) as isize;
+                let pixel = *(data.offset(offset) as *const u32);
+                let idx = ((row as u32 * w + col as u32) * 3) as usize;
+                buf[idx] = ((pixel >> 16) & 0xff) as u8;
+                buf[idx + 1] = ((pixel >> 8) & 0xff) as u8;
+                buf[idx + 2] = (pixel & 0xff) as u8;
+            }
+        }
+
+        xlib::XDestroyImage(image);
+
+        let img = RgbImage::from_raw(w, h, buf).unwrap();
+        let mut png = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut png)
+            .write_image(&img, w, h, image::ExtendedColorType::Rgb8)
+            .unwrap();
+
+        Ok(Screenshot { data: png })
     }
 }
 

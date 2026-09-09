@@ -1,7 +1,7 @@
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 
-use lxs_core::{Driver, LxsError, MouseButton};
+use lxs_core::{Driver, LxsError, MouseButton, Rect};
 use lxs_runtime::{Display, DisplayConfig, Runtime};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -115,6 +115,7 @@ impl McpServer {
                 "lxs_input_key" => self.input_key(args).await,
                 "lxs_capture_screenshot" => self.screenshot(args).await,
                 "lxs_capture_region" => self.screenshot_region(args).await,
+                "lxs_display_info" => self.display_info(args).await,
                 "lxs_state_window" => self.state_window(args).await,
                 "lxs_state_tree" => self.state_tree(args).await,
                 "lxs_state_element_bounds" => self.element_bounds(args).await,
@@ -240,12 +241,42 @@ impl McpServer {
         }))
     }
 
-    async fn screenshot_region(&self, _args: &Value) -> Result<Value, LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn screenshot_region(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let x = args["x"].as_i64().ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
+        let y = args["y"].as_i64().ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+        let w = args["w"].as_u64().ok_or_else(|| LxsError::InvalidArgument("w required".into()))? as u32;
+        let h = args["h"].as_u64().ok_or_else(|| LxsError::InvalidArgument("h required".into()))? as u32;
+
+        let driver = self.find_driver(id)?;
+        let shot = driver.screenshot_region(Rect { x, y, w, h }).await?;
+        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &shot.data);
+        Ok(json!({
+            "mimeType": "image/png",
+            "data": b64
+        }))
     }
 
-    async fn scroll(&self, _args: &Value) -> Result<Value, LxsError> {
-        Err(LxsError::NotImplemented)
+    async fn scroll(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let dx = args["dx"].as_i64().unwrap_or(0) as i32;
+        let dy = args["dy"].as_i64().unwrap_or(0) as i32;
+
+        let driver = self.find_driver(id)?;
+        driver.scroll(dx, dy).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn display_info(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"].as_str().ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let display = self.find_display(id)?;
+        let info = display.lock().unwrap().info();
+        Ok(json!({
+            "display": info.display,
+            "width": info.width,
+            "height": info.height,
+            "app_count": info.app_count,
+        }))
     }
 
     async fn state_window(&self, args: &Value) -> Result<Value, LxsError> {
@@ -408,6 +439,11 @@ fn tool_definitions() -> Vec<Value> {
             "name": "lxs_capture_region",
             "description": "Take a screenshot of a region",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" }, "w": { "type": "integer" }, "h": { "type": "integer" } }, "required": ["display_id", "x", "y", "w", "h"] }
+        }),
+        json!({
+            "name": "lxs_display_info",
+            "description": "Get display metadata",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
         }),
     ]
 }

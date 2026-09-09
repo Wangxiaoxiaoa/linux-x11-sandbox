@@ -37,6 +37,13 @@ pub struct WindowState {
     pub title: Option<String>,
 }
 
+pub struct DisplayInfo {
+    pub display: String,
+    pub width: u32,
+    pub height: u32,
+    pub app_count: usize,
+}
+
 pub struct A11yElement {
     pub index: usize,
     pub role: String,

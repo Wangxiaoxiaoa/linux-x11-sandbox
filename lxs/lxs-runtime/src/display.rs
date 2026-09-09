@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use lxs_core::{Driver, LxsError};
+use lxs_core::{DisplayInfo, Driver, LxsError};
 use lxs_driver::NativeDriver;
 
 use crate::process::ManagedProcess;
@@ -36,6 +36,8 @@ impl Default for DisplayConfig {
 pub struct Display {
     id: String,
     display: String,
+    width: u32,
+    height: u32,
     xserver: ManagedProcess,
     wm: ManagedProcess,
     apps: std::sync::Mutex<Vec<ManagedProcess>>,
@@ -56,7 +58,9 @@ impl Display {
 
         Ok(Self {
             id,
-            display,
+            display: display.clone(),
+            width: config.width,
+            height: config.height,
             xserver,
             wm,
             apps: std::sync::Mutex::new(Vec::new()),
@@ -95,6 +99,15 @@ impl Display {
 
     pub fn list_apps(&self) -> Vec<u32> {
         self.apps.lock().unwrap().iter().map(|p| p.pid()).collect()
+    }
+
+    pub fn info(&self) -> DisplayInfo {
+        DisplayInfo {
+            display: self.display.clone(),
+            width: self.width,
+            height: self.height,
+            app_count: self.apps.lock().unwrap().len(),
+        }
     }
 
     pub async fn destroy(&mut self) -> Result<(), LxsError> {
