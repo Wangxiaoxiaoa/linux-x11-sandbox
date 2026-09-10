@@ -1,0 +1,13 @@
+/target
+/python/src/linux_x11_sandbox/bin
+/python/src/linux_x11_sandbox/skill
+**/__pycache__
+*.pyc
+*.pyo
+*.egg-info
+*.dist-info
+.git
+.github
+.vscode
+*.md
+!python/README.md
