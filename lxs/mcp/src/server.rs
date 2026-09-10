@@ -122,6 +122,13 @@ impl McpServer {
             "lxs_state_element_bounds" => self.element_bounds(args).await,
             "lxs_perform_action" => self.perform_action(args).await,
             "lxs_input_scroll" => self.scroll(args).await,
+            "lxs_input_drag" => self.drag(args).await,
+            "lxs_window_focus" => self.window_focus(args).await,
+            "lxs_window_raise" => self.window_raise(args).await,
+            "lxs_window_resize" => self.window_resize(args).await,
+            "lxs_window_move" => self.window_move(args).await,
+            "lxs_clipboard_get" => self.clipboard_get(args).await,
+            "lxs_clipboard_set" => self.clipboard_set(args).await,
             _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
         };
 
@@ -344,6 +351,105 @@ impl McpServer {
         Ok(json!({ "success": true }))
     }
 
+    async fn drag(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let x1 = args["x1"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("x1 required".into()))?
+            as i32;
+        let y1 = args["y1"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("y1 required".into()))?
+            as i32;
+        let x2 = args["x2"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("x2 required".into()))?
+            as i32;
+        let y2 = args["y2"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("y2 required".into()))?
+            as i32;
+
+        let driver = self.find_driver(id).await?;
+        driver.drag(x1, y1, x2, y2, MouseButton::Left).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn window_focus(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
+        driver.focus_window().await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn window_raise(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
+        driver.raise_window().await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn window_resize(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let width = args["width"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("width required".into()))?
+            as u32;
+        let height = args["height"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("height required".into()))?
+            as u32;
+
+        let driver = self.find_driver(id).await?;
+        driver.resize_window(width, height).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn window_move(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let x = args["x"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
+        let y = args["y"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+
+        let driver = self.find_driver(id).await?;
+        driver.move_window(x, y).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn clipboard_get(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
+        let text = driver.clipboard_get().await?;
+        Ok(json!({ "text": text }))
+    }
+
+    async fn clipboard_set(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let text = args["text"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("text required".into()))?;
+        let driver = self.find_driver(id).await?;
+        driver.clipboard_set(text).await?;
+        Ok(json!({ "success": true }))
+    }
+
     async fn display_info(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
@@ -542,6 +648,41 @@ fn tool_definitions() -> Vec<Value> {
             "name": "lxs_input_scroll",
             "description": "Scroll by a delta",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "dx": { "type": "integer" }, "dy": { "type": "integer" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_input_drag",
+            "description": "Drag from (x1, y1) to (x2, y2)",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x1": { "type": "integer" }, "y1": { "type": "integer" }, "x2": { "type": "integer" }, "y2": { "type": "integer" } }, "required": ["display_id", "x1", "y1", "x2", "y2"] }
+        }),
+        json!({
+            "name": "lxs_window_focus",
+            "description": "Focus the active window",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_window_raise",
+            "description": "Raise the active window to the top",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_window_resize",
+            "description": "Resize the active window",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" } }, "required": ["display_id", "width", "height"] }
+        }),
+        json!({
+            "name": "lxs_window_move",
+            "description": "Move the active window",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" } }, "required": ["display_id", "x", "y"] }
+        }),
+        json!({
+            "name": "lxs_clipboard_get",
+            "description": "Get text from the clipboard",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_clipboard_set",
+            "description": "Set text on the clipboard",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "text": { "type": "string" } }, "required": ["display_id", "text"] }
         }),
         json!({
             "name": "lxs_capture_region",

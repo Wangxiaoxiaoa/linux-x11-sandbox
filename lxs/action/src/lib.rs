@@ -4,7 +4,7 @@ use tokio::task;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
     ConnectionExt as _, BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, KEY_PRESS_EVENT,
-    KEY_RELEASE_EVENT,
+    KEY_RELEASE_EVENT, MOTION_NOTIFY_EVENT,
 };
 use x11rb::protocol::xtest::ConnectionExt as _;
 use x11rb::rust_connection::{ConnectError, RustConnection};
@@ -158,6 +158,56 @@ impl InputBackend for XtestInput {
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
     }
 
+    async fn drag(
+        &self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        button: MouseButton,
+    ) -> Result<(), LxsError> {
+        let display = self.display.clone();
+        task::spawn_blocking(move || {
+            let (conn, screen) = open_connection(&display)?;
+            let root = root_window(&conn, screen);
+            let button = match button {
+                MouseButton::Left => 1,
+                MouseButton::Middle => 2,
+                MouseButton::Right => 3,
+            };
+
+            conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, x1 as i16, y1 as i16)
+                .map_err(xerr)?
+                .check()
+                .map_err(xerr)?;
+            conn.xtest_fake_input(BUTTON_PRESS_EVENT, button, 0, root, x1 as i16, y1 as i16, 0)
+                .map_err(xerr)?
+                .check()
+                .map_err(xerr)?;
+            conn.xtest_fake_input(MOTION_NOTIFY_EVENT, 0, 0, root, x2 as i16, y2 as i16, 0)
+                .map_err(xerr)?
+                .check()
+                .map_err(xerr)?;
+            conn.xtest_fake_input(
+                BUTTON_RELEASE_EVENT,
+                button,
+                0,
+                root,
+                x2 as i16,
+                y2 as i16,
+                0,
+            )
+            .map_err(xerr)?
+            .check()
+            .map_err(xerr)?;
+
+            conn.flush().map_err(xerr)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+
     async fn type_text(&self, text: &str) -> Result<(), LxsError> {
         let display = self.display.clone();
         let text = text.to_string();
@@ -244,6 +294,172 @@ fn press(conn: &RustConnection, keycode: u8, down: bool) -> Result<(), LxsError>
         .map_err(xerr)?
         .check()
         .map_err(xerr)
+}
+
+fn validate_window(conn: &RustConnection, window: u32) -> Result<(), LxsError> {
+    conn.get_window_attributes(window)
+        .map_err(xerr)?
+        .reply()
+        .map_err(|_| LxsError::InvalidArgument("active window no longer exists".into()))?;
+    Ok(())
+}
+
+fn get_active_window(conn: &RustConnection, screen: usize) -> Result<u32, LxsError> {
+    let root = root_window(conn, screen);
+    let active_atom = conn
+        .intern_atom(false, b"_NET_ACTIVE_WINDOW")
+        .map_err(xerr)?
+        .reply()
+        .map_err(xerr)?
+        .atom;
+    let reply = conn
+        .get_property(
+            false,
+            root,
+            active_atom,
+            x11rb::protocol::xproto::AtomEnum::WINDOW,
+            0,
+            1,
+        )
+        .map_err(xerr)?
+        .reply()
+        .map_err(xerr)?;
+    let bytes = reply.value;
+    if bytes.len() < 4 {
+        return Err(LxsError::InvalidArgument("no active window".into()));
+    }
+    Ok(u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+pub struct X11WindowManager {
+    display: String,
+}
+
+impl X11WindowManager {
+    pub fn new(display: &str) -> Result<Self, LxsError> {
+        let _ = open_connection(display)?;
+        Ok(Self {
+            display: display.to_string(),
+        })
+    }
+}
+
+#[async_trait]
+impl lxs_core::WindowBackend for X11WindowManager {
+    async fn focus_window(&self) -> Result<(), LxsError> {
+        let display = self.display.clone();
+        task::spawn_blocking(move || {
+            let (conn, screen) = open_connection(&display)?;
+            let window = get_active_window(&conn, screen)?;
+            validate_window(&conn, window)?;
+            conn.set_input_focus(
+                x11rb::protocol::xproto::InputFocus::POINTER_ROOT,
+                window,
+                x11rb::CURRENT_TIME,
+            )
+            .map_err(xerr)?
+            .check()
+            .map_err(xerr)?;
+            conn.flush().map_err(xerr)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+
+    async fn raise_window(&self) -> Result<(), LxsError> {
+        let display = self.display.clone();
+        task::spawn_blocking(move || {
+            let (conn, screen) = open_connection(&display)?;
+            let window = get_active_window(&conn, screen)?;
+            validate_window(&conn, window)?;
+            let aux = x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE);
+            conn.configure_window(window, &aux)
+                .map_err(xerr)?
+                .check()
+                .map_err(xerr)?;
+            conn.flush().map_err(xerr)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+
+    async fn resize_window(&self, width: u32, height: u32) -> Result<(), LxsError> {
+        let display = self.display.clone();
+        task::spawn_blocking(move || {
+            let (conn, screen) = open_connection(&display)?;
+            let window = get_active_window(&conn, screen)?;
+            validate_window(&conn, window)?;
+            let aux = x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .width(width)
+                .height(height);
+            conn.configure_window(window, &aux)
+                .map_err(xerr)?
+                .check()
+                .map_err(xerr)?;
+            conn.flush().map_err(xerr)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+
+    async fn move_window(&self, x: i32, y: i32) -> Result<(), LxsError> {
+        let display = self.display.clone();
+        task::spawn_blocking(move || {
+            let (conn, screen) = open_connection(&display)?;
+            let window = get_active_window(&conn, screen)?;
+            validate_window(&conn, window)?;
+            let aux = x11rb::protocol::xproto::ConfigureWindowAux::new().x(x).y(y);
+            conn.configure_window(window, &aux)
+                .map_err(xerr)?
+                .check()
+                .map_err(xerr)?;
+            conn.flush().map_err(xerr)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+}
+
+pub struct ArboardClipboard;
+
+impl ArboardClipboard {
+    pub fn new() -> Result<Self, LxsError> {
+        let _ = arboard::Clipboard::new().map_err(|e| LxsError::InvalidArgument(e.to_string()))?;
+        Ok(Self)
+    }
+}
+
+#[async_trait]
+impl lxs_core::ClipboardBackend for ArboardClipboard {
+    async fn clipboard_get(&self) -> Result<String, LxsError> {
+        task::spawn_blocking(|| {
+            let mut clipboard =
+                arboard::Clipboard::new().map_err(|e| LxsError::InvalidArgument(e.to_string()))?;
+            clipboard
+                .get_text()
+                .map_err(|e| LxsError::InvalidArgument(e.to_string()))
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+
+    async fn clipboard_set(&self, text: &str) -> Result<(), LxsError> {
+        let text = text.to_string();
+        task::spawn_blocking(move || {
+            let mut clipboard =
+                arboard::Clipboard::new().map_err(|e| LxsError::InvalidArgument(e.to_string()))?;
+            clipboard
+                .set_text(text)
+                .map_err(|e| LxsError::InvalidArgument(e.to_string()))
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
 }
 
 #[cfg(test)]

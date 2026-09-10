@@ -68,6 +68,14 @@ pub trait InputBackend: Send + Sync {
     async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxsError>;
     async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxsError>;
     async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError>;
+    async fn drag(
+        &self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        button: MouseButton,
+    ) -> Result<(), LxsError>;
     async fn type_text(&self, text: &str) -> Result<(), LxsError>;
     async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
 }
@@ -76,6 +84,20 @@ pub trait InputBackend: Send + Sync {
 pub trait CaptureBackend: Send + Sync {
     async fn screenshot(&self) -> Result<Screenshot, LxsError>;
     async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError>;
+}
+
+#[async_trait]
+pub trait WindowBackend: Send + Sync {
+    async fn focus_window(&self) -> Result<(), LxsError>;
+    async fn raise_window(&self) -> Result<(), LxsError>;
+    async fn resize_window(&self, width: u32, height: u32) -> Result<(), LxsError>;
+    async fn move_window(&self, x: i32, y: i32) -> Result<(), LxsError>;
+}
+
+#[async_trait]
+pub trait ClipboardBackend: Send + Sync {
+    async fn clipboard_get(&self) -> Result<String, LxsError>;
+    async fn clipboard_set(&self, text: &str) -> Result<(), LxsError>;
 }
 
 #[async_trait]
@@ -91,11 +113,27 @@ pub trait Driver: Send + Sync {
     async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxsError>;
     async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxsError>;
     async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError>;
+    async fn drag(
+        &self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        button: MouseButton,
+    ) -> Result<(), LxsError>;
     async fn type_text(&self, text: &str) -> Result<(), LxsError>;
     async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
 
     async fn screenshot(&self) -> Result<Screenshot, LxsError>;
     async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError>;
+
+    async fn focus_window(&self) -> Result<(), LxsError>;
+    async fn raise_window(&self) -> Result<(), LxsError>;
+    async fn resize_window(&self, width: u32, height: u32) -> Result<(), LxsError>;
+    async fn move_window(&self, x: i32, y: i32) -> Result<(), LxsError>;
+
+    async fn clipboard_get(&self) -> Result<String, LxsError>;
+    async fn clipboard_set(&self, text: &str) -> Result<(), LxsError>;
 
     async fn window_state(&self) -> Result<WindowState, LxsError>;
     async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxsError>;
