@@ -7,7 +7,7 @@ pub mod process;
 pub mod wm;
 pub mod xserver;
 
-pub use display::{Backend, Display, DisplayConfig};
+pub use display::{Backend, Display, DisplayConfig, DisplayKind};
 
 pub struct Runtime {
     next_display: AtomicU32,
@@ -25,6 +25,11 @@ impl Runtime {
         let id = format!("d-{}", num);
         let display = format!(":{}", num);
         Display::create(id, display, config).await
+    }
+
+    pub async fn attach_display(&self, display: &str) -> Result<Display, LxsError> {
+        let id = display.to_string();
+        Display::attach(id, display.to_string()).await
     }
 }
 

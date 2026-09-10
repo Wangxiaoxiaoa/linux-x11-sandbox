@@ -15,6 +15,12 @@ pub enum Backend {
 }
 
 #[derive(Clone)]
+pub enum DisplayKind {
+    Sandbox,
+    External,
+}
+
+#[derive(Clone)]
 pub struct DisplayConfig {
     pub backend: Backend,
     pub width: u32,
@@ -36,10 +42,11 @@ impl Default for DisplayConfig {
 pub struct Display {
     id: String,
     display: String,
+    kind: DisplayKind,
     width: u32,
     height: u32,
-    xserver: ManagedProcess,
-    wm: ManagedProcess,
+    xserver: Option<ManagedProcess>,
+    wm: Option<ManagedProcess>,
     apps: std::sync::Mutex<Vec<ManagedProcess>>,
     driver: Arc<dyn Driver>,
 }
@@ -63,10 +70,26 @@ impl Display {
         Ok(Self {
             id,
             display: display.clone(),
+            kind: DisplayKind::Sandbox,
             width: config.width,
             height: config.height,
-            xserver,
-            wm,
+            xserver: Some(xserver),
+            wm: Some(wm),
+            apps: std::sync::Mutex::new(Vec::new()),
+            driver,
+        })
+    }
+
+    pub async fn attach(id: String, display: String) -> Result<Self, LxsError> {
+        let driver = Arc::new(NativeDriver::new(&display)?);
+        Ok(Self {
+            id,
+            display: display.clone(),
+            kind: DisplayKind::External,
+            width: 0,
+            height: 0,
+            xserver: None,
+            wm: None,
             apps: std::sync::Mutex::new(Vec::new()),
             driver,
         })
@@ -78,6 +101,14 @@ impl Display {
 
     pub fn display(&self) -> &str {
         &self.display
+    }
+
+    pub fn kind(&self) -> &DisplayKind {
+        &self.kind
+    }
+
+    pub fn is_external(&self) -> bool {
+        matches!(self.kind, DisplayKind::External)
     }
 
     pub fn driver(&self) -> Arc<dyn Driver> {
@@ -113,6 +144,11 @@ impl Display {
     }
 
     pub async fn destroy(&mut self) -> Result<(), LxsError> {
+        if self.is_external() {
+            return Err(LxsError::InvalidArgument(
+                "cannot destroy external display".into(),
+            ));
+        }
         let mut apps = {
             let mut apps = self.apps.lock().unwrap();
             std::mem::take(&mut *apps)
@@ -120,8 +156,16 @@ impl Display {
         for app in apps.iter_mut() {
             let _ = app.kill().await;
         }
-        let _ = self.wm.kill().await;
-        let _ = self.xserver.kill().await;
+        if let Some(ref mut wm) = self.wm {
+            let _ = wm.kill().await;
+        }
+        if let Some(ref mut xserver) = self.xserver {
+            let _ = xserver.kill().await;
+        }
+        Ok(())
+    }
+
+    pub async fn detach(&mut self) -> Result<(), LxsError> {
         Ok(())
     }
 }
