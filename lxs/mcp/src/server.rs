@@ -121,6 +121,11 @@ impl McpServer {
             "lxs_state_tree" => self.state_tree(args).await,
             "lxs_state_element_bounds" => self.element_bounds(args).await,
             "lxs_perform_action" => self.perform_action(args).await,
+            "lxs_state_focus_element" => self.focus_element(args).await,
+            "lxs_state_scroll_element" => self.scroll_element(args).await,
+            "lxs_state_set_value" => self.set_value(args).await,
+            "lxs_state_type_into_editable" => self.type_into_editable(args).await,
+            "lxs_state_find_element" => self.find_element(args).await,
             "lxs_input_scroll" => self.scroll(args).await,
             "lxs_input_drag" => self.drag(args).await,
             "lxs_window_focus" => self.window_focus(args).await,
@@ -530,6 +535,11 @@ impl McpServer {
                     "index": e.index,
                     "role": e.role,
                     "name": e.name,
+                    "description": e.description,
+                    "value": e.value,
+                    "checked": e.checked,
+                    "enabled": e.enabled,
+                    "selected": e.selected,
                     "actions": e.actions,
                 })
             })
@@ -579,6 +589,89 @@ impl McpServer {
         let driver = self.find_driver(id).await?;
         driver.perform_action(pid, index, action).await?;
         Ok(json!({ "success": true }))
+    }
+
+    async fn focus_element(&self, args: &Value) -> Result<Value, LxsError> {
+        let (id, pid, index) = Self::parse_pid_index(args)?;
+        let driver = self.find_driver(id).await?;
+        let ok = driver.focus_element(pid, index).await?;
+        Ok(json!({ "success": ok }))
+    }
+
+    async fn scroll_element(&self, args: &Value) -> Result<Value, LxsError> {
+        let (id, pid, index) = Self::parse_pid_index(args)?;
+        let direction = args["direction"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("direction required".into()))?;
+        let amount = args["amount"].as_u64().unwrap_or(1) as u32;
+        let driver = self.find_driver(id).await?;
+        driver.scroll_element(pid, index, direction, amount).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn set_value(&self, args: &Value) -> Result<Value, LxsError> {
+        let (id, pid, index) = Self::parse_pid_index(args)?;
+        let value = args["value"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("value required".into()))?;
+        let driver = self.find_driver(id).await?;
+        driver.set_value(pid, index, value).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn type_into_editable(&self, args: &Value) -> Result<Value, LxsError> {
+        let (id, pid, index) = Self::parse_pid_index(args)?;
+        let text = args["text"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("text required".into()))?;
+        let driver = self.find_driver(id).await?;
+        driver.type_into_editable(pid, index, text).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn find_element(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
+            as u32;
+        let query = args["query"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("query required".into()))?;
+        let driver = self.find_driver(id).await?;
+        let result = driver.find_element(pid, query).await?;
+        Ok(match result {
+            Some(e) => json!({
+                "found": true,
+                "index": e.index,
+                "role": e.role,
+                "name": e.name,
+                "description": e.description,
+                "value": e.value,
+                "checked": e.checked,
+                "enabled": e.enabled,
+                "selected": e.selected,
+                "actions": e.actions,
+            }),
+            None => json!({ "found": false }),
+        })
+    }
+
+    fn parse_pid_index(args: &Value) -> Result<(&str, u32, usize), LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
+            as u32;
+        let index = args["index"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("index required".into()))?
+            as usize;
+        Ok((id, pid, index))
     }
 
     async fn find_driver(&self, id: &str) -> Result<Arc<dyn Driver>, LxsError> {
@@ -681,6 +774,31 @@ fn tool_definitions() -> Vec<Value> {
             "name": "lxs_perform_action",
             "description": "Perform a named AT-SPI action on an indexed element",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "action": { "type": "string" } }, "required": ["display_id", "pid", "index", "action"] }
+        }),
+        json!({
+            "name": "lxs_state_focus_element",
+            "description": "Focus an indexed accessibility element without activating its window",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" } }, "required": ["display_id", "pid", "index"] }
+        }),
+        json!({
+            "name": "lxs_state_scroll_element",
+            "description": "Scroll an indexed accessibility element into view",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "direction": { "type": "string", "enum": ["up", "down", "left", "right"] }, "amount": { "type": "integer" } }, "required": ["display_id", "pid", "index", "direction"] }
+        }),
+        json!({
+            "name": "lxs_state_set_value",
+            "description": "Set the value of an indexed accessibility element",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "value": { "type": "string" } }, "required": ["display_id", "pid", "index", "value"] }
+        }),
+        json!({
+            "name": "lxs_state_type_into_editable",
+            "description": "Type text into an indexed editable accessibility element",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "text": { "type": "string" } }, "required": ["display_id", "pid", "index", "text"] }
+        }),
+        json!({
+            "name": "lxs_state_find_element",
+            "description": "Find the first accessibility element matching a query string",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "query": { "type": "string" } }, "required": ["display_id", "pid", "query"] }
         }),
         json!({
             "name": "lxs_input_scroll",

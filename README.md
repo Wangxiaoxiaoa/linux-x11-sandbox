@@ -154,9 +154,14 @@ Once connected, the agent can call:
 | `lxs_clipboard_set` | Set clipboard text |
 | `lxs_wait` | Wait for `ms` milliseconds |
 | `lxs_state_window` | Active window title |
-| `lxs_state_tree` | AT-SPI tree |
+| `lxs_state_tree` | AT-SPI tree with role/name/value/states/actions |
 | `lxs_state_element_bounds` | Element bounds |
 | `lxs_perform_action` | AT-SPI action |
+| `lxs_state_focus_element` | Focus an element without raising its window |
+| `lxs_state_scroll_element` | Scroll element into view |
+| `lxs_state_set_value` | Set element value |
+| `lxs_state_type_into_editable` | Type into an editable element |
+| `lxs_state_find_element` | Find element by role/name/value substring |
 
 ### 1.5 Example session
 

@@ -153,9 +153,14 @@ MCP 配置大多数智能体使用 `mcpServers`。Claude Desktop 示例：
 | `lxs_clipboard_set` | 设置剪贴板文本 |
 | `lxs_wait` | 等待 `ms` 毫秒 |
 | `lxs_state_window` | 当前激活窗口标题 |
-| `lxs_state_tree` | AT-SPI 无障碍树 |
+| `lxs_state_tree` | AT-SPI 无障碍树（含 role/name/value/states/actions） |
 | `lxs_state_element_bounds` | 元素边界 |
 | `lxs_perform_action` | 执行 AT-SPI 动作 |
+| `lxs_state_focus_element` | 聚焦元素但不置顶窗口 |
+| `lxs_state_scroll_element` | 滚动元素到可见区域 |
+| `lxs_state_set_value` | 设置元素值 |
+| `lxs_state_type_into_editable` | 在可编辑元素中输入文本 |
+| `lxs_state_find_element` | 按 role/name/value 子串查找元素 |
 
 ### 1.5 示例会话
 

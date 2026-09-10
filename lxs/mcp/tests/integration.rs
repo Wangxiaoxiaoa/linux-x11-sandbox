@@ -127,6 +127,11 @@ fn mcp_smoke() {
         "lxs_state_tree",
         "lxs_state_element_bounds",
         "lxs_perform_action",
+        "lxs_state_focus_element",
+        "lxs_state_scroll_element",
+        "lxs_state_set_value",
+        "lxs_state_type_into_editable",
+        "lxs_state_find_element",
     ];
     for name in required {
         assert!(names.contains(&name.to_string()), "missing tool {}", name);

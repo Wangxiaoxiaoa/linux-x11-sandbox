@@ -85,9 +85,14 @@ All communication uses JSON-RPC 2.0.
 | `lxs_clipboard_set` | Set clipboard text. Arg: `text`. |
 | `lxs_wait` | Wait. Arg: `ms`. |
 | `lxs_state_window` | Active window title. Returns `{"title": "..."}` or `null`. |
-| `lxs_state_tree` | AT-SPI tree. Returns elements with `index`, `role`, `name`, `actions`. |
+| `lxs_state_tree` | AT-SPI tree. Returns elements with `index`, `role`, `name`, `description`, `value`, `checked`, `enabled`, `selected`, `actions`. |
 | `lxs_state_element_bounds` | Bounds of element by `element_index`. |
 | `lxs_perform_action` | Perform AT-SPI action. Args: `pid`, `element_index`, `action`. |
+| `lxs_state_focus_element` | Focus element without raising window. Args: `pid`, `element_index`. |
+| `lxs_state_scroll_element` | Scroll element into view. Args: `pid`, `element_index`, `direction` (`up`/`down`/`left`/`right`). |
+| `lxs_state_set_value` | Set element value. Args: `pid`, `element_index`, `value`. |
+| `lxs_state_type_into_editable` | Type text into editable element. Args: `pid`, `element_index`, `text`. |
+| `lxs_state_find_element` | Find first element matching query. Args: `pid`, `query`. |
 
 ## Example: launch and screenshot
 

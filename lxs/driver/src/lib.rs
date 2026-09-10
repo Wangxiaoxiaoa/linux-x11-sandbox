@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use lxs_action::{ArboardClipboard, X11WindowManager, XtestInput};
 use lxs_core::{
-    A11yBackend, Bounds, CaptureBackend, ClipboardBackend, Driver, InputBackend, LxsError,
-    MouseButton, Rect, Screenshot, WindowBackend, WindowInfo, WindowState,
+    A11yBackend, A11yElement, Bounds, CaptureBackend, ClipboardBackend, Driver, InputBackend,
+    LxsError, MouseButton, Rect, Screenshot, WindowBackend, WindowInfo, WindowState,
 };
 use lxs_state::{AtspiA11y, X11Capture};
 
@@ -116,5 +116,33 @@ impl Driver for NativeDriver {
 
     async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError> {
         self.a11y.perform_action(pid, index, action).await
+    }
+
+    async fn focus_element(&self, pid: u32, index: usize) -> Result<bool, LxsError> {
+        self.a11y.focus_element(pid, index).await
+    }
+
+    async fn scroll_element(
+        &self,
+        pid: u32,
+        index: usize,
+        direction: &str,
+        amount: u32,
+    ) -> Result<(), LxsError> {
+        self.a11y
+            .scroll_element(pid, index, direction, amount)
+            .await
+    }
+
+    async fn set_value(&self, pid: u32, index: usize, value: &str) -> Result<(), LxsError> {
+        self.a11y.set_value(pid, index, value).await
+    }
+
+    async fn type_into_editable(&self, pid: u32, index: usize, text: &str) -> Result<(), LxsError> {
+        self.a11y.type_into_editable(pid, index, text).await
+    }
+
+    async fn find_element(&self, pid: u32, query: &str) -> Result<Option<A11yElement>, LxsError> {
+        self.a11y.find_element(pid, query).await
     }
 }

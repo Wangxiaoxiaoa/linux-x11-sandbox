@@ -53,6 +53,11 @@ pub struct A11yElement {
     pub index: usize,
     pub role: String,
     pub name: Option<String>,
+    pub description: Option<String>,
+    pub value: Option<String>,
+    pub checked: Option<bool>,
+    pub enabled: Option<bool>,
+    pub selected: Option<bool>,
     pub actions: Vec<String>,
 }
 
@@ -113,6 +118,17 @@ pub trait A11yBackend: Send + Sync {
     async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxsError>;
     async fn element_bounds(&self, pid: u32, index: usize) -> Result<Bounds, LxsError>;
     async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError>;
+    async fn focus_element(&self, pid: u32, index: usize) -> Result<bool, LxsError>;
+    async fn scroll_element(
+        &self,
+        pid: u32,
+        index: usize,
+        direction: &str,
+        amount: u32,
+    ) -> Result<(), LxsError>;
+    async fn set_value(&self, pid: u32, index: usize, value: &str) -> Result<(), LxsError>;
+    async fn type_into_editable(&self, pid: u32, index: usize, text: &str) -> Result<(), LxsError>;
+    async fn find_element(&self, pid: u32, query: &str) -> Result<Option<A11yElement>, LxsError>;
 }
 
 #[async_trait]
@@ -148,4 +164,15 @@ pub trait Driver: Send + Sync {
     async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxsError>;
     async fn element_bounds(&self, pid: u32, index: usize) -> Result<Bounds, LxsError>;
     async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError>;
+    async fn focus_element(&self, pid: u32, index: usize) -> Result<bool, LxsError>;
+    async fn scroll_element(
+        &self,
+        pid: u32,
+        index: usize,
+        direction: &str,
+        amount: u32,
+    ) -> Result<(), LxsError>;
+    async fn set_value(&self, pid: u32, index: usize, value: &str) -> Result<(), LxsError>;
+    async fn type_into_editable(&self, pid: u32, index: usize, text: &str) -> Result<(), LxsError>;
+    async fn find_element(&self, pid: u32, query: &str) -> Result<Option<A11yElement>, LxsError>;
 }

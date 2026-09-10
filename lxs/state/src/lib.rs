@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use image::{ImageEncoder, RgbImage};
-use lxs_core::{A11yBackend, Bounds, CaptureBackend, LxsError, Rect, Screenshot, WindowState};
+use lxs_core::{
+    A11yBackend, A11yElement, Bounds, CaptureBackend, LxsError, Rect, Screenshot, WindowState,
+};
 use tokio::task;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt as _;
@@ -218,6 +220,43 @@ impl A11yBackend for AtspiA11y {
     async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError> {
         atspi::perform_action(pid, index, action).await
     }
+
+    async fn focus_element(&self, pid: u32, index: usize) -> Result<bool, LxsError> {
+        atspi::focus_element(pid, index).await
+    }
+
+    async fn scroll_element(
+        &self,
+        pid: u32,
+        index: usize,
+        direction: &str,
+        amount: u32,
+    ) -> Result<(), LxsError> {
+        atspi::scroll_element(pid, index, direction, amount).await
+    }
+
+    async fn set_value(&self, pid: u32, index: usize, value: &str) -> Result<(), LxsError> {
+        atspi::set_value(pid, index, value).await
+    }
+
+    async fn type_into_editable(&self, pid: u32, index: usize, text: &str) -> Result<(), LxsError> {
+        atspi::type_into_editable(pid, index, text).await
+    }
+
+    async fn find_element(&self, pid: u32, query: &str) -> Result<Option<A11yElement>, LxsError> {
+        let found = atspi::find_element(pid, query).await?;
+        Ok(found.map(|e| A11yElement {
+            index: e.index,
+            role: e.role,
+            name: e.name,
+            description: e.description,
+            value: e.value,
+            checked: e.checked,
+            enabled: e.enabled,
+            selected: e.selected,
+            actions: e.actions,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -232,6 +271,11 @@ mod tests {
                 index: 0,
                 role: "frame".into(),
                 name: Some("window".into()),
+                description: None,
+                value: None,
+                checked: None,
+                enabled: Some(true),
+                selected: None,
                 bounds: Some(Bounds {
                     x: 0,
                     y: 0,
@@ -244,6 +288,11 @@ mod tests {
                 index: 1,
                 role: "button".into(),
                 name: Some("ok".into()),
+                description: None,
+                value: None,
+                checked: None,
+                enabled: Some(true),
+                selected: None,
                 bounds: None,
                 actions: vec![],
             },
