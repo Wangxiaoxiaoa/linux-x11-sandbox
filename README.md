@@ -2,7 +2,7 @@
 
 # linux-x11-sandbox
 
-Linux X11 GUI sandbox with a built-in native automation driver.
+**A self-contained Linux X11 GUI sandbox for automation, testing, and AI agents.**
 
 [![CI](https://github.com/Wangxiaoxiaoa/linux-x11-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/Wangxiaoxiaoa/linux-x11-sandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -17,13 +17,15 @@ Linux X11 GUI sandbox with a built-in native automation driver.
 
 `linux-x11-sandbox` runs GUI applications inside isolated X11 displays and lets agents interact with them through mouse, keyboard, screenshots, and the AT-SPI accessibility tree.
 
-Each sandbox gets its own X server, window manager, and application process group. Sandboxes do not share windows, focus, or clipboard. Typical uses:
+Each sandbox gets its own X server, window manager, and application process group. Sandboxes do not share windows, focus, or clipboard. All 24 automation tools have real-effect integration tests that exercise real X11 input, window changes, screenshots, and accessibility actions.
+
+Typical uses:
 
 - Let an agent operate a GUI app without taking over the host desktop.
 - Run end-to-end tests that need real screen, input, and window focus.
 - Capture screenshots or accessibility trees for verification.
 
-It can be used as an **MCP server**, a **Rust SDK**, or a **composable sandbox layer** inside Docker/VMs.
+It can be used as an **MCP server**, a **Rust SDK**, or a **composable sandbox layer** inside Docker/VMs. All X11 protocol access uses [`x11rb`](https://github.com/psychon/x11rb); there is no Xlib linkage.
 
 ## Architecture
 
@@ -68,7 +70,7 @@ The server speaks JSON-RPC 2.0 over stdin/stdout.
 | `lxs_display_info` | Resolution and app count |
 | `lxs_app_launch` | Launch an application |
 | `lxs_app_terminate` | Terminate by PID |
-| `lxs_input_click` | Click at `(x, y)` with optional `button` and `count` |
+| `lxs_input_click` | Click at `(x, y)` with `button` (`left`/`right`/`middle`) and `count` (single/double/triple) |
 | `lxs_input_move` | Move cursor |
 | `lxs_input_scroll` | Scroll |
 | `lxs_input_drag` | Drag from `(x1, y1)` to `(x2, y2)` |

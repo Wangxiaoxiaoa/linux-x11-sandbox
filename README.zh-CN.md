@@ -2,7 +2,7 @@
 
 # linux-x11-sandbox
 
-内置原生自动化驱动的 Linux X11 GUI 沙盒。
+**面向自动化测试与 AI 智能体的自包含 Linux X11 GUI 沙盒。**
 
 [![CI](https://github.com/Wangxiaoxiaoa/linux-x11-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/Wangxiaoxiaoa/linux-x11-sandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -17,13 +17,15 @@
 
 `linux-x11-sandbox` 在独立的 X11 display 中运行 GUI 应用，并允许智能体通过鼠标、键盘、截图和 AT-SPI 无障碍树与应用交互。
 
-每个沙盒拥有独立的 X 服务器、窗口管理器和应用进程组，不共享窗口、焦点或剪贴板。典型用途：
+每个沙盒拥有独立的 X 服务器、窗口管理器和应用进程组，不共享窗口、焦点或剪贴板。24 个自动化工具均配有真实效果集成测试，覆盖真实 X11 输入、窗口变化、截图和无障碍操作。
+
+典型用途：
 
 - 让智能体操作 GUI 应用而不接管宿主机桌面。
 - 运行需要真实屏幕、输入和窗口焦点的端到端测试。
 - 采集截图或无障碍树用于验证。
 
-可作为 **MCP 服务器**、**Rust SDK** 或 **可组合沙盒层**（Docker/VM 内）使用。
+可作为 **MCP 服务器**、**Rust SDK** 或 **可组合沙盒层**（Docker/VM 内）使用。所有 X11 协议访问均通过 [`x11rb`](https://github.com/psychon/x11rb)；不链接 Xlib。
 
 ## 架构
 
@@ -68,7 +70,7 @@ cargo build --release
 | `lxs_display_info` | 分辨率与应用数量 |
 | `lxs_app_launch` | 启动应用 |
 | `lxs_app_terminate` | 按 PID 终止应用 |
-| `lxs_input_click` | 在 `(x, y)` 点击，支持 `button` 和 `count` |
+| `lxs_input_click` | 在 `(x, y)` 点击，支持 `button`（`left`/`right`/`middle`）与 `count`（单击/双击/三击） |
 | `lxs_input_move` | 移动光标 |
 | `lxs_input_scroll` | 滚动 |
 | `lxs_input_drag` | 从 `(x1, y1)` 拖动到 `(x2, y2)` |
