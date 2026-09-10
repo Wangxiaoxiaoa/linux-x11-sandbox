@@ -129,6 +129,9 @@ impl McpServer {
             "lxs_window_move" => self.window_move(args).await,
             "lxs_clipboard_get" => self.clipboard_get(args).await,
             "lxs_clipboard_set" => self.clipboard_set(args).await,
+            "lxs_input_get_cursor_position" => self.get_cursor_position(args).await,
+            "lxs_window_list" => self.window_list(args).await,
+            "lxs_wait" => self.wait(args).await,
             _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
         };
 
@@ -243,9 +246,16 @@ impl McpServer {
         let y = args["y"]
             .as_i64()
             .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+        let button = match args["button"].as_str().unwrap_or("left") {
+            "left" => MouseButton::Left,
+            "middle" => MouseButton::Middle,
+            "right" => MouseButton::Right,
+            b => return Err(LxsError::InvalidArgument(format!("unknown button: {b}"))),
+        };
+        let count = args["count"].as_u64().unwrap_or(1) as u32;
 
         let driver = self.find_driver(id).await?;
-        driver.click(x, y, MouseButton::Left, 1).await?;
+        driver.click(x, y, button, count).await?;
         Ok(json!({ "success": true }))
     }
 
@@ -450,6 +460,34 @@ impl McpServer {
         Ok(json!({ "success": true }))
     }
 
+    async fn get_cursor_position(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
+        let (x, y) = driver.get_cursor_position().await?;
+        Ok(json!({ "x": x, "y": y }))
+    }
+
+    async fn window_list(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
+        let windows = driver.list_windows().await?;
+        let items: Vec<Value> = windows
+            .iter()
+            .map(|w| json!({ "id": w.id, "title": w.title }))
+            .collect();
+        Ok(json!({ "windows": items }))
+    }
+
+    async fn wait(&self, args: &Value) -> Result<Value, LxsError> {
+        let ms = args["ms"].as_u64().unwrap_or(1000);
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        Ok(json!({ "success": true }))
+    }
+
     async fn display_info(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
@@ -602,7 +640,7 @@ fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "lxs_input_click",
             "description": "Click at screen coordinates",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" } }, "required": ["display_id", "x", "y"] }
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" }, "button": { "type": "string", "enum": ["left", "middle", "right"] }, "count": { "type": "integer", "minimum": 1 } }, "required": ["display_id", "x", "y"] }
         }),
         json!({
             "name": "lxs_input_move",
@@ -650,6 +688,11 @@ fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "dx": { "type": "integer" }, "dy": { "type": "integer" } }, "required": ["display_id"] }
         }),
         json!({
+            "name": "lxs_input_get_cursor_position",
+            "description": "Get the current mouse cursor position",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
             "name": "lxs_input_drag",
             "description": "Drag from (x1, y1) to (x2, y2)",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x1": { "type": "integer" }, "y1": { "type": "integer" }, "x2": { "type": "integer" }, "y2": { "type": "integer" } }, "required": ["display_id", "x1", "y1", "x2", "y2"] }
@@ -683,6 +726,16 @@ fn tool_definitions() -> Vec<Value> {
             "name": "lxs_clipboard_set",
             "description": "Set text on the clipboard",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "text": { "type": "string" } }, "required": ["display_id", "text"] }
+        }),
+        json!({
+            "name": "lxs_window_list",
+            "description": "List top-level windows",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_wait",
+            "description": "Wait for a specified duration in milliseconds",
+            "inputSchema": { "type": "object", "properties": { "ms": { "type": "integer", "minimum": 0 } }, "required": [] }
         }),
         json!({
             "name": "lxs_capture_region",

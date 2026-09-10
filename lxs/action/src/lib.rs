@@ -244,6 +244,22 @@ impl InputBackend for XtestInput {
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
     }
 
+    async fn get_cursor_position(&self) -> Result<(i32, i32), LxsError> {
+        let display = self.display.clone();
+        task::spawn_blocking(move || {
+            let (conn, screen) = open_connection(&display)?;
+            let root = root_window(&conn, screen);
+            let reply = conn
+                .query_pointer(root)
+                .map_err(xerr)?
+                .reply()
+                .map_err(xerr)?;
+            Ok((reply.root_x as i32, reply.root_y as i32))
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+
     async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError> {
         let display = self.display.clone();
         let key = key.to_string();
@@ -302,6 +318,43 @@ fn validate_window(conn: &RustConnection, window: u32) -> Result<(), LxsError> {
         .reply()
         .map_err(|_| LxsError::InvalidArgument("active window no longer exists".into()))?;
     Ok(())
+}
+
+fn get_window_title(conn: &RustConnection, window: u32) -> Option<String> {
+    let net_wm_name = conn
+        .intern_atom(false, b"_NET_WM_NAME")
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
+    let utf8_string = conn
+        .intern_atom(false, b"UTF8_STRING")
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
+    if let Ok(reply) = conn.get_property(false, window, net_wm_name, utf8_string, 0, 1024) {
+        if let Ok(reply) = reply.reply() {
+            if !reply.value.is_empty() {
+                return String::from_utf8(reply.value).ok();
+            }
+        }
+    }
+    if let Ok(reply) = conn.get_property(
+        false,
+        window,
+        x11rb::protocol::xproto::AtomEnum::WM_NAME,
+        x11rb::protocol::xproto::AtomEnum::STRING,
+        0,
+        1024,
+    ) {
+        if let Ok(reply) = reply.reply() {
+            if !reply.value.is_empty() {
+                return String::from_utf8(reply.value).ok();
+            }
+        }
+    }
+    None
 }
 
 fn get_active_window(conn: &RustConnection, screen: usize) -> Result<u32, LxsError> {
@@ -419,6 +472,32 @@ impl lxs_core::WindowBackend for X11WindowManager {
                 .map_err(xerr)?;
             conn.flush().map_err(xerr)?;
             Ok(())
+        })
+        .await
+        .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
+    }
+
+    async fn list_windows(&self) -> Result<Vec<lxs_core::WindowInfo>, LxsError> {
+        let display = self.display.clone();
+        task::spawn_blocking(move || {
+            let (conn, screen) = open_connection(&display)?;
+            let root = root_window(&conn, screen);
+            let tree = conn.query_tree(root).map_err(xerr)?.reply().map_err(xerr)?;
+            let mut windows = Vec::new();
+            for &window in &tree.children {
+                if let Ok(attrs) = conn.get_window_attributes(window) {
+                    if let Ok(attrs) = attrs.reply() {
+                        if attrs.override_redirect {
+                            continue;
+                        }
+                    }
+                }
+                windows.push(lxs_core::WindowInfo {
+                    id: window,
+                    title: get_window_title(&conn, window),
+                });
+            }
+            Ok(windows)
         })
         .await
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?

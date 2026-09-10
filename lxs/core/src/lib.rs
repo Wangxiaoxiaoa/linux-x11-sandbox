@@ -37,6 +37,11 @@ pub struct WindowState {
     pub title: Option<String>,
 }
 
+pub struct WindowInfo {
+    pub id: u32,
+    pub title: Option<String>,
+}
+
 pub struct DisplayInfo {
     pub display: String,
     pub width: u32,
@@ -78,6 +83,7 @@ pub trait InputBackend: Send + Sync {
     ) -> Result<(), LxsError>;
     async fn type_text(&self, text: &str) -> Result<(), LxsError>;
     async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
+    async fn get_cursor_position(&self) -> Result<(i32, i32), LxsError>;
 }
 
 #[async_trait]
@@ -92,6 +98,7 @@ pub trait WindowBackend: Send + Sync {
     async fn raise_window(&self) -> Result<(), LxsError>;
     async fn resize_window(&self, width: u32, height: u32) -> Result<(), LxsError>;
     async fn move_window(&self, x: i32, y: i32) -> Result<(), LxsError>;
+    async fn list_windows(&self) -> Result<Vec<WindowInfo>, LxsError>;
 }
 
 #[async_trait]
@@ -123,6 +130,7 @@ pub trait Driver: Send + Sync {
     ) -> Result<(), LxsError>;
     async fn type_text(&self, text: &str) -> Result<(), LxsError>;
     async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
+    async fn get_cursor_position(&self) -> Result<(i32, i32), LxsError>;
 
     async fn screenshot(&self) -> Result<Screenshot, LxsError>;
     async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError>;
@@ -131,6 +139,7 @@ pub trait Driver: Send + Sync {
     async fn raise_window(&self) -> Result<(), LxsError>;
     async fn resize_window(&self, width: u32, height: u32) -> Result<(), LxsError>;
     async fn move_window(&self, x: i32, y: i32) -> Result<(), LxsError>;
+    async fn list_windows(&self) -> Result<Vec<WindowInfo>, LxsError>;
 
     async fn clipboard_get(&self) -> Result<String, LxsError>;
     async fn clipboard_set(&self, text: &str) -> Result<(), LxsError>;

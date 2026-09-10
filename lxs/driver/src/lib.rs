@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use lxs_action::{ArboardClipboard, X11WindowManager, XtestInput};
 use lxs_core::{
     A11yBackend, Bounds, CaptureBackend, ClipboardBackend, Driver, InputBackend, LxsError,
-    MouseButton, Rect, Screenshot, WindowBackend, WindowState,
+    MouseButton, Rect, Screenshot, WindowBackend, WindowInfo, WindowState,
 };
 use lxs_state::{AtspiA11y, X11Capture};
 
@@ -59,6 +59,10 @@ impl Driver for NativeDriver {
         self.input.key(key, modifiers).await
     }
 
+    async fn get_cursor_position(&self) -> Result<(i32, i32), LxsError> {
+        self.input.get_cursor_position().await
+    }
+
     async fn screenshot(&self) -> Result<Screenshot, LxsError> {
         self.capture.screenshot().await
     }
@@ -81,6 +85,10 @@ impl Driver for NativeDriver {
 
     async fn move_window(&self, x: i32, y: i32) -> Result<(), LxsError> {
         self.window.move_window(x, y).await
+    }
+
+    async fn list_windows(&self) -> Result<Vec<WindowInfo>, LxsError> {
+        self.window.list_windows().await
     }
 
     async fn clipboard_get(&self) -> Result<String, LxsError> {
