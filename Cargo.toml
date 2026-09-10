@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox"
 
 [workspace.dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-std", "net", "io-util", "fs"] }
 thiserror = "1"
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
@@ -25,4 +25,4 @@ lxs-action = { path = "lxs/action" }
 lxs-state = { path = "lxs/state" }
 lxs-driver = { path = "lxs/driver" }
 lxs-runtime = { path = "lxs/runtime" }
-lxs-mcp = { path = "lxs/mcp" }
+lxs-daemon = { path = "lxs/daemon" }
