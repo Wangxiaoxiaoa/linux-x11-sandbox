@@ -24,6 +24,7 @@ The system is designed to be consumed in three ways:
 | **Three consumption modes** | MCP, SDK, and plugin/embeddable. |
 | **External-sandbox friendly** | Runnable inside containers, manageable via standard protocols, configurable through files/env vars. |
 | **Clean lifecycle** | Robust startup, health checking, graceful shutdown, and resource cleanup. |
+| **x11rb-only** | All X11 protocol access uses `x11rb`; no Xlib linkage. |
 
 ## 3. Three Access Modes
 
