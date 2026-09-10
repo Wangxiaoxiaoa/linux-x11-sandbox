@@ -1,32 +1,15 @@
 use async_trait::async_trait;
 use image::{ImageEncoder, RgbImage};
 use lxs_core::{
-    A11yBackend, A11yElement, Bounds, CaptureBackend, LxsError, Rect, Screenshot, WindowState,
+    x11, A11yBackend, Bounds, CaptureBackend, DesktopOverview, GetWindowStateResult, LxsError,
+    ProcessEntry, Screenshot, WindowEntry,
 };
 use tokio::task;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt as _;
-use x11rb::rust_connection::{ConnectError, RustConnection};
+use x11rb::rust_connection::RustConnection;
 
 pub mod atspi;
-
-fn xerr<E: std::fmt::Display>(e: E) -> LxsError {
-    LxsError::InvalidArgument(e.to_string())
-}
-
-fn open_connection(display: &str) -> Result<(RustConnection, usize), LxsError> {
-    RustConnection::connect(Some(display))
-        .map_err(|e: ConnectError| LxsError::InvalidArgument(format!("cannot open display: {e}")))
-}
-
-fn window_atom(conn: &RustConnection) -> Result<u32, LxsError> {
-    Ok(conn
-        .intern_atom(false, b"WINDOW")
-        .map_err(xerr)?
-        .reply()
-        .map_err(xerr)?
-        .atom)
-}
 
 pub struct X11Capture {
     display: String,
@@ -34,7 +17,7 @@ pub struct X11Capture {
 
 impl X11Capture {
     pub fn new(display: &str) -> Result<Self, LxsError> {
-        let _ = open_connection(display)?;
+        let _ = x11::open_connection(display)?;
         Ok(Self {
             display: display.to_string(),
         })
@@ -46,7 +29,7 @@ impl CaptureBackend for X11Capture {
     async fn screenshot(&self) -> Result<Screenshot, LxsError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
-            let (conn, screen) = open_connection(&display)?;
+            let (conn, screen) = x11::open_connection(&display)?;
             let root = conn.setup().roots[screen].root;
             let w = conn.setup().roots[screen].width_in_pixels;
             let h = conn.setup().roots[screen].height_in_pixels;
@@ -56,19 +39,16 @@ impl CaptureBackend for X11Capture {
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
     }
 
-    async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError> {
+    async fn screenshot_window(&self, window_id: u32) -> Result<Screenshot, LxsError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
-            let (conn, screen) = open_connection(&display)?;
-            let root = conn.setup().roots[screen].root;
-            capture_rect(
-                &conn,
-                root,
-                region.x as i16,
-                region.y as i16,
-                region.w as u16,
-                region.h as u16,
-            )
+            let (conn, _) = x11::open_connection(&display)?;
+            let geom = conn
+                .get_geometry(window_id)
+                .map_err(x11::xerr)?
+                .reply()
+                .map_err(x11::xerr)?;
+            capture_rect(&conn, window_id, 0, 0, geom.width, geom.height)
         })
         .await
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
@@ -93,9 +73,9 @@ fn capture_rect(
             h,
             u32::MAX,
         )
-        .map_err(xerr)?
+        .map_err(x11::xerr)?
         .reply()
-        .map_err(xerr)?;
+        .map_err(x11::xerr)?;
 
     let data = reply.data;
     let stride = data.len() / h as usize;
@@ -129,133 +109,261 @@ fn capture_rect(
 
 pub struct AtspiA11y {
     display: String,
-    elements: std::sync::Mutex<Option<Vec<atspi::Element>>>,
 }
 
 impl AtspiA11y {
     pub fn new(display: &str) -> Result<Self, LxsError> {
-        let _ = open_connection(display)?;
+        let _ = x11::open_connection(display)?;
         Ok(Self {
             display: display.to_string(),
-            elements: std::sync::Mutex::new(None),
         })
     }
 }
 
 #[async_trait]
 impl A11yBackend for AtspiA11y {
-    async fn window_state(&self) -> Result<WindowState, LxsError> {
+    async fn get_window_state(
+        &self,
+        pid: u32,
+        window_id: u32,
+        include_tree: bool,
+        include_screenshot: bool,
+    ) -> Result<GetWindowStateResult, LxsError> {
+        let display = self.display.clone();
+        let tree_future = async {
+            if include_tree {
+                let walked = atspi::walk_tree(pid).await?;
+                Ok(Some(atspi::accessibility_tree(&walked)))
+            } else {
+                Ok(None)
+            }
+        };
+
+        let (state, tree) = tokio::join!(
+            task::spawn_blocking(move || get_window_state_sync(
+                &display,
+                window_id,
+                pid,
+                include_screenshot
+            )),
+            tree_future
+        );
+
+        let (title, app_name, bounds, screenshot) =
+            state.map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))??;
+
+        Ok(GetWindowStateResult {
+            window_id,
+            title,
+            app_name,
+            bounds,
+            tree: tree?,
+            screenshot,
+        })
+    }
+
+    async fn get_desktop_overview(&self) -> Result<DesktopOverview, LxsError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
-            let (conn, screen) = open_connection(&display)?;
+            let (conn, screen) = x11::open_connection(&display)?;
             let root = conn.setup().roots[screen].root;
 
-            let net_active = conn
-                .intern_atom(false, b"_NET_ACTIVE_WINDOW")
-                .map_err(xerr)?
-                .reply()
-                .map_err(xerr)?
-                .atom;
-            let net_name = conn
+            let net_wm_name = conn
                 .intern_atom(false, b"_NET_WM_NAME")
-                .map_err(xerr)?
+                .map_err(x11::xerr)?
                 .reply()
-                .map_err(xerr)?
+                .map_err(x11::xerr)?
                 .atom;
             let utf8 = conn
                 .intern_atom(false, b"UTF8_STRING")
-                .map_err(xerr)?
+                .map_err(x11::xerr)?
                 .reply()
-                .map_err(xerr)?
+                .map_err(x11::xerr)?
                 .atom;
 
-            let active_reply = conn
-                .get_property(false, root, net_active, window_atom(&conn)?, 0, 1)
-                .map_err(xerr)?
+            let tree_reply = conn
+                .query_tree(root)
+                .map_err(x11::xerr)?
                 .reply()
-                .map_err(xerr)?;
+                .map_err(x11::xerr)?;
 
-            let mut title = None;
-            if active_reply.format == 32 && active_reply.value.len() >= 4 {
-                let window = u32::from_ne_bytes([
-                    active_reply.value[0],
-                    active_reply.value[1],
-                    active_reply.value[2],
-                    active_reply.value[3],
-                ]);
-
-                if let Ok(cookie) = conn.get_property(false, window, net_name, utf8, 0, 1024) {
-                    if let Ok(name_reply) = cookie.reply() {
-                        if !name_reply.value.is_empty() {
-                            title = String::from_utf8(name_reply.value).ok();
+            let mut windows = Vec::new();
+            for &window in &tree_reply.children {
+                let title = if let Ok(cookie) =
+                    conn.get_property(false, window, net_wm_name, utf8, 0, 1024)
+                {
+                    cookie.reply().ok().and_then(|r| {
+                        if r.value.is_empty() {
+                            None
+                        } else {
+                            String::from_utf8(r.value).ok()
                         }
-                    }
-                }
+                    })
+                } else {
+                    None
+                };
+
+                let bounds = conn
+                    .get_geometry(window)
+                    .map_err(x11::xerr)?
+                    .reply()
+                    .ok()
+                    .map(|g| Bounds {
+                        x: g.x as i32,
+                        y: g.y as i32,
+                        w: g.width as u32,
+                        h: g.height as u32,
+                    });
+
+                windows.push(WindowEntry {
+                    id: window,
+                    pid: pid_of_window(&conn, window).ok(),
+                    title,
+                    bounds,
+                });
             }
 
-            Ok(WindowState { title })
+            let processes = list_processes();
+            Ok(DesktopOverview { processes, windows })
         })
         .await
         .map_err(|e| LxsError::ProcessSpawnFailed(e.to_string()))?
-    }
-
-    async fn accessibility_tree(
-        &self,
-        pid: Option<u32>,
-    ) -> Result<lxs_core::AccessibilityTree, LxsError> {
-        let pid = pid.ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?;
-        let walked = atspi::walk_tree(pid).await?;
-        let tree = atspi::accessibility_tree(&walked);
-        *self.elements.lock().unwrap() = Some(walked);
-        Ok(tree)
-    }
-
-    async fn element_bounds(&self, _pid: u32, index: usize) -> Result<Bounds, LxsError> {
-        let elements = self.elements.lock().unwrap();
-        let list = elements.as_ref().ok_or(LxsError::NotImplemented)?;
-        let element = list.get(index).ok_or(LxsError::NotImplemented)?;
-        element.bounds.clone().ok_or(LxsError::NotImplemented)
-    }
-
-    async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError> {
-        atspi::perform_action(pid, index, action).await
-    }
-
-    async fn focus_element(&self, pid: u32, index: usize) -> Result<bool, LxsError> {
-        atspi::focus_element(pid, index).await
-    }
-
-    async fn scroll_element(
-        &self,
-        pid: u32,
-        index: usize,
-        direction: &str,
-        amount: u32,
-    ) -> Result<(), LxsError> {
-        atspi::scroll_element(pid, index, direction, amount).await
     }
 
     async fn set_value(&self, pid: u32, index: usize, value: &str) -> Result<(), LxsError> {
         atspi::set_value(pid, index, value).await
     }
 
-    async fn type_into_editable(&self, pid: u32, index: usize, text: &str) -> Result<(), LxsError> {
-        atspi::type_into_editable(pid, index, text).await
+    async fn element_frame(&self, pid: u32, index: usize) -> Result<Bounds, LxsError> {
+        let elements = atspi::walk_tree(pid).await?;
+        elements
+            .into_iter()
+            .find(|e| e.index == index)
+            .and_then(|e| e.frame)
+            .ok_or_else(|| {
+                LxsError::InvalidArgument(format!("element {index} not found for pid {pid}"))
+            })
     }
+}
 
-    async fn find_element(&self, pid: u32, query: &str) -> Result<Option<A11yElement>, LxsError> {
-        let found = atspi::find_element(pid, query).await?;
-        Ok(found.map(|e| A11yElement {
-            index: e.index,
-            role: e.role,
-            name: e.name,
-            description: e.description,
-            value: e.value,
-            checked: e.checked,
-            enabled: e.enabled,
-            selected: e.selected,
-            actions: e.actions,
-        }))
+#[allow(clippy::type_complexity)]
+fn get_window_state_sync(
+    display: &str,
+    window_id: u32,
+    pid: u32,
+    include_screenshot: bool,
+) -> Result<(Option<String>, Option<String>, Bounds, Option<Screenshot>), LxsError> {
+    let (conn, _screen) = x11::open_connection(display)?;
+
+    let net_name = conn
+        .intern_atom(false, b"_NET_WM_NAME")
+        .map_err(x11::xerr)?
+        .reply()
+        .map_err(x11::xerr)?
+        .atom;
+    let utf8 = conn
+        .intern_atom(false, b"UTF8_STRING")
+        .map_err(x11::xerr)?
+        .reply()
+        .map_err(x11::xerr)?
+        .atom;
+
+    let title = conn
+        .get_property(false, window_id, net_name, utf8, 0, 1024)
+        .map_err(x11::xerr)?
+        .reply()
+        .ok()
+        .and_then(|r| {
+            if r.value.is_empty() {
+                None
+            } else {
+                String::from_utf8(r.value).ok()
+            }
+        });
+
+    let geom = conn
+        .get_geometry(window_id)
+        .map_err(x11::xerr)?
+        .reply()
+        .map_err(x11::xerr)?;
+    let bounds = Bounds {
+        x: geom.x as i32,
+        y: geom.y as i32,
+        w: geom.width as u32,
+        h: geom.height as u32,
+    };
+
+    let screenshot = if include_screenshot {
+        Some(capture_rect(
+            &conn,
+            window_id,
+            0,
+            0,
+            geom.width,
+            geom.height,
+        )?)
+    } else {
+        None
+    };
+
+    let app_name = read_process_name(pid);
+
+    Ok((title, app_name, bounds, screenshot))
+}
+
+fn read_process_name(pid: u32) -> Option<String> {
+    std::fs::read_to_string(format!("/proc/{}/comm", pid))
+        .ok()
+        .map(|s| s.trim().to_string())
+}
+
+fn list_processes() -> Vec<ProcessEntry> {
+    let mut processes = Vec::new();
+    if let Ok(entries) = std::fs::read_dir("/proc") {
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if let Ok(pid) = name.parse::<u32>() {
+                    if let Some(proc_name) = read_process_name(pid) {
+                        processes.push(ProcessEntry {
+                            pid,
+                            name: proc_name,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    processes.sort_by_key(|p| p.pid);
+    processes
+}
+
+fn pid_of_window(conn: &RustConnection, window: u32) -> Result<u32, LxsError> {
+    let atom = conn
+        .intern_atom(false, b"_NET_WM_PID")
+        .map_err(x11::xerr)?
+        .reply()
+        .map_err(x11::xerr)?
+        .atom;
+    let card = conn
+        .intern_atom(false, b"CARDINAL")
+        .map_err(x11::xerr)?
+        .reply()
+        .map_err(x11::xerr)?
+        .atom;
+    let reply = conn
+        .get_property(false, window, atom, card, 0, 1)
+        .map_err(x11::xerr)?
+        .reply()
+        .map_err(x11::xerr)?;
+    if reply.format == 32 && reply.value.len() >= 4 {
+        Ok(u32::from_ne_bytes([
+            reply.value[0],
+            reply.value[1],
+            reply.value[2],
+            reply.value[3],
+        ]))
+    } else {
+        Err(LxsError::InvalidArgument("no _NET_WM_PID".into()))
     }
 }
 
@@ -271,30 +379,24 @@ mod tests {
                 index: 0,
                 role: "frame".into(),
                 name: Some("window".into()),
-                description: None,
-                value: None,
-                checked: None,
-                enabled: Some(true),
-                selected: None,
-                bounds: Some(Bounds {
+                frame: Some(Bounds {
                     x: 0,
                     y: 0,
                     w: 100,
                     h: 100,
                 }),
                 actions: vec!["click".into()],
+                parent_index: None,
+                depth: 0,
             },
             Element {
                 index: 1,
                 role: "button".into(),
                 name: Some("ok".into()),
-                description: None,
-                value: None,
-                checked: None,
-                enabled: Some(true),
-                selected: None,
-                bounds: None,
+                frame: None,
                 actions: vec![],
+                parent_index: Some(0),
+                depth: 1,
             },
         ];
 
@@ -303,5 +405,7 @@ mod tests {
         assert_eq!(tree.elements[0].index, 0);
         assert_eq!(tree.elements[0].role, "frame");
         assert_eq!(tree.elements[1].name, Some("ok".into()));
+        assert_eq!(tree.elements[1].parent_index, Some(0));
+        assert_eq!(tree.elements[1].depth, 1);
     }
 }

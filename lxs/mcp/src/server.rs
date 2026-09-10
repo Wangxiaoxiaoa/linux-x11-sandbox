@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
-use lxs_core::{Driver, LxsError, MouseButton, Rect};
+use lxs_core::{Driver, LxsError, MouseButton};
 use lxs_runtime::{Backend, Display, DisplayConfig, Runtime};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -16,9 +16,6 @@ pub struct McpServer {
 #[derive(Deserialize)]
 #[serde(crate = "serde")]
 struct Request {
-    #[allow(dead_code)]
-    jsonrpc: String,
-    #[serde(default)]
     id: Option<Value>,
     method: String,
     #[serde(default)]
@@ -61,10 +58,8 @@ impl McpServer {
                 continue;
             }
 
-            let req: Request = match serde_json::from_str(&line) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
+            let req: Request = serde_json::from_str(&line)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             if req.method.starts_with("notifications/") {
                 continue;
@@ -101,42 +96,41 @@ impl McpServer {
     }
 
     async fn handle_tool_call(&self, id: Option<Value>, params: &Value) -> Response {
-        let name = params["name"].as_str().unwrap_or("");
+        let name = params["name"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("name required".into()));
         let args = &params["arguments"];
+
+        let name = match name {
+            Ok(n) => n,
+            Err(e) => return error_response(id, -32602, &e.to_string()),
+        };
 
         let result = match name {
             "lxs_display_create" => self.create_display(args).await,
             "lxs_display_destroy" => self.destroy_display(args).await,
             "lxs_app_launch" => self.app_launch(args).await,
             "lxs_app_terminate" => self.app_terminate(args).await,
-            "lxs_app_list" => self.app_list(args).await,
             "lxs_input_click" => self.click(args).await,
             "lxs_input_move" => self.move_mouse(args).await,
             "lxs_input_type" => self.input_type(args).await,
             "lxs_input_key" => self.input_key(args).await,
             "lxs_capture_screenshot" => self.screenshot(args).await,
-            "lxs_capture_region" => self.screenshot_region(args).await,
+            "lxs_capture_window" => self.screenshot_window(args).await,
             "lxs_display_info" => self.display_info(args).await,
-            "lxs_state_window" => self.state_window(args).await,
-            "lxs_state_tree" => self.state_tree(args).await,
-            "lxs_state_element_bounds" => self.element_bounds(args).await,
-            "lxs_perform_action" => self.perform_action(args).await,
-            "lxs_state_focus_element" => self.focus_element(args).await,
-            "lxs_state_scroll_element" => self.scroll_element(args).await,
-            "lxs_state_set_value" => self.set_value(args).await,
-            "lxs_state_type_into_editable" => self.type_into_editable(args).await,
-            "lxs_state_find_element" => self.find_element(args).await,
+            "lxs_get_window_state" => self.get_window_state(args).await,
+            "lxs_get_desktop_overview" => self.get_desktop_overview(args).await,
+            "lxs_set_value" => self.set_value(args).await,
             "lxs_input_scroll" => self.scroll(args).await,
             "lxs_input_drag" => self.drag(args).await,
-            "lxs_window_focus" => self.window_focus(args).await,
-            "lxs_window_raise" => self.window_raise(args).await,
-            "lxs_window_resize" => self.window_resize(args).await,
-            "lxs_window_move" => self.window_move(args).await,
-            "lxs_clipboard_get" => self.clipboard_get(args).await,
-            "lxs_clipboard_set" => self.clipboard_set(args).await,
             "lxs_input_get_cursor_position" => self.get_cursor_position(args).await,
-            "lxs_window_list" => self.window_list(args).await,
+            "lxs_window_focus" => self.window_focus(args).await,
+            "lxs_window_set_frame" => self.window_set_frame(args).await,
+            "lxs_window_close" => self.window_close(args).await,
+            "lxs_clipboard_get" => self.clipboard_get(args).await,
+            "lxs_click_element" => self.click_element(args).await,
             "lxs_wait" => self.wait(args).await,
+            "lxs_clipboard_set" => self.clipboard_set(args).await,
             _ => Err(LxsError::InvalidArgument(format!("unknown tool: {}", name))),
         };
 
@@ -232,15 +226,6 @@ impl McpServer {
         Ok(json!({ "success": true }))
     }
 
-    async fn app_list(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let display = self.find_display(id).await?;
-        let pids = display.lock().await.list_apps();
-        Ok(json!({ "pids": pids }))
-    }
-
     async fn click(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
@@ -251,13 +236,13 @@ impl McpServer {
         let y = args["y"]
             .as_i64()
             .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+
         let button = match args["button"].as_str().unwrap_or("left") {
-            "left" => MouseButton::Left,
-            "middle" => MouseButton::Middle,
             "right" => MouseButton::Right,
-            b => return Err(LxsError::InvalidArgument(format!("unknown button: {b}"))),
+            "middle" => MouseButton::Middle,
+            _ => MouseButton::Left,
         };
-        let count = args["count"].as_u64().unwrap_or(1) as u32;
+        let count = args["count"].as_u64().unwrap_or(1).max(1) as u32;
 
         let driver = self.find_driver(id).await?;
         driver.click(x, y, button, count).await?;
@@ -328,25 +313,17 @@ impl McpServer {
         }))
     }
 
-    async fn screenshot_region(&self, args: &Value) -> Result<Value, LxsError> {
+    async fn screenshot_window(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
             .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let x = args["x"]
-            .as_i64()
-            .ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
-        let y = args["y"]
-            .as_i64()
-            .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
-        let w = args["w"]
+        let window_id = args["window_id"]
             .as_u64()
-            .ok_or_else(|| LxsError::InvalidArgument("w required".into()))? as u32;
-        let h = args["h"]
-            .as_u64()
-            .ok_or_else(|| LxsError::InvalidArgument("h required".into()))? as u32;
+            .ok_or_else(|| LxsError::InvalidArgument("window_id required".into()))?
+            as u32;
 
         let driver = self.find_driver(id).await?;
-        let shot = driver.screenshot_region(Rect { x, y, w, h }).await?;
+        let shot = driver.screenshot_window(window_id).await?;
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &shot.data);
         Ok(json!({
             "mimeType": "image/png",
@@ -388,32 +365,46 @@ impl McpServer {
             as i32;
 
         let driver = self.find_driver(id).await?;
-        driver.drag(x1, y1, x2, y2, MouseButton::Left).await?;
+        driver.drag(x1, y1, x2, y2).await?;
         Ok(json!({ "success": true }))
+    }
+
+    async fn get_cursor_position(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
+        let (x, y) = driver.get_cursor_position().await?;
+        Ok(json!({ "x": x, "y": y }))
     }
 
     async fn window_focus(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
             .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let window_id = args["window_id"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("window_id required".into()))?
+            as u32;
         let driver = self.find_driver(id).await?;
-        driver.focus_window().await?;
+        driver.focus_window(window_id).await?;
         Ok(json!({ "success": true }))
     }
 
-    async fn window_raise(&self, args: &Value) -> Result<Value, LxsError> {
+    async fn window_set_frame(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
             .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let driver = self.find_driver(id).await?;
-        driver.raise_window().await?;
-        Ok(json!({ "success": true }))
-    }
-
-    async fn window_resize(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let window_id = args["window_id"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("window_id required".into()))?
+            as u32;
+        let x = args["x"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
+        let y = args["y"]
+            .as_i64()
+            .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
         let width = args["width"]
             .as_u64()
             .ok_or_else(|| LxsError::InvalidArgument("width required".into()))?
@@ -424,23 +415,55 @@ impl McpServer {
             as u32;
 
         let driver = self.find_driver(id).await?;
-        driver.resize_window(width, height).await?;
+        driver
+            .set_window_frame(window_id, x, y, width, height)
+            .await?;
         Ok(json!({ "success": true }))
     }
 
-    async fn window_move(&self, args: &Value) -> Result<Value, LxsError> {
+    async fn window_close(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
             .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let x = args["x"]
-            .as_i64()
-            .ok_or_else(|| LxsError::InvalidArgument("x required".into()))? as i32;
-        let y = args["y"]
-            .as_i64()
-            .ok_or_else(|| LxsError::InvalidArgument("y required".into()))? as i32;
+        let window_id = args["window_id"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("window_id required".into()))?
+            as u32;
 
         let driver = self.find_driver(id).await?;
-        driver.move_window(x, y).await?;
+        driver.close_window(window_id).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn click_element(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let pid = args["pid"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
+            as u32;
+        let index = args["index"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("index required".into()))?
+            as usize;
+        let button = match args["button"].as_str().unwrap_or("left") {
+            "right" => MouseButton::Right,
+            "middle" => MouseButton::Middle,
+            _ => MouseButton::Left,
+        };
+
+        let driver = self.find_driver(id).await?;
+        driver.click_element(pid, index, button).await?;
+        Ok(json!({ "success": true }))
+    }
+
+    async fn wait(&self, args: &Value) -> Result<Value, LxsError> {
+        let ms = args["ms"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("ms required".into()))?;
+
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
         Ok(json!({ "success": true }))
     }
 
@@ -465,34 +488,6 @@ impl McpServer {
         Ok(json!({ "success": true }))
     }
 
-    async fn get_cursor_position(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let driver = self.find_driver(id).await?;
-        let (x, y) = driver.get_cursor_position().await?;
-        Ok(json!({ "x": x, "y": y }))
-    }
-
-    async fn window_list(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let driver = self.find_driver(id).await?;
-        let windows = driver.list_windows().await?;
-        let items: Vec<Value> = windows
-            .iter()
-            .map(|w| json!({ "id": w.id, "title": w.title }))
-            .collect();
-        Ok(json!({ "windows": items }))
-    }
-
-    async fn wait(&self, args: &Value) -> Result<Value, LxsError> {
-        let ms = args["ms"].as_u64().unwrap_or(1000);
-        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
-        Ok(json!({ "success": true }))
-    }
-
     async fn display_info(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
@@ -507,16 +502,7 @@ impl McpServer {
         }))
     }
 
-    async fn state_window(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let driver = self.find_driver(id).await?;
-        let state = driver.window_state().await?;
-        Ok(json!({ "title": state.title }))
-    }
-
-    async fn state_tree(&self, args: &Value) -> Result<Value, LxsError> {
+    async fn get_window_state(&self, args: &Value) -> Result<Value, LxsError> {
         let id = args["display_id"]
             .as_str()
             .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
@@ -524,142 +510,94 @@ impl McpServer {
             .as_u64()
             .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
             as u32;
+        let window_id = args["window_id"]
+            .as_u64()
+            .ok_or_else(|| LxsError::InvalidArgument("window_id required".into()))?
+            as u32;
+        let include_tree = args["include_tree"].as_bool().unwrap_or(true);
+        let include_screenshot = args["include_screenshot"].as_bool().unwrap_or(false);
 
         let driver = self.find_driver(id).await?;
-        let tree = driver.accessibility_tree(Some(pid)).await?;
-        let elements: Vec<Value> = tree
-            .elements
-            .iter()
-            .map(|e| {
-                json!({
-                    "index": e.index,
-                    "role": e.role,
-                    "name": e.name,
-                    "description": e.description,
-                    "value": e.value,
-                    "checked": e.checked,
-                    "enabled": e.enabled,
-                    "selected": e.selected,
-                    "actions": e.actions,
+        let state = driver
+            .get_window_state(pid, window_id, include_tree, include_screenshot)
+            .await?;
+
+        let mut result = json!({
+            "window_id": state.window_id,
+            "title": state.title,
+            "app_name": state.app_name,
+            "bounds": {
+                "x": state.bounds.x,
+                "y": state.bounds.y,
+                "w": state.bounds.w,
+                "h": state.bounds.h,
+            },
+        });
+
+        if let Some(tree) = state.tree {
+            let elements: Vec<Value> = tree
+                .elements
+                .iter()
+                .map(|e| {
+                    let mut node = json!({
+                        "index": e.index,
+                        "role": e.role,
+                        "name": e.name,
+                        "actions": e.actions,
+                        "depth": e.depth,
+                    });
+                    if let Some(p) = e.parent_index {
+                        node["parent_index"] = json!(p);
+                    }
+                    if let Some(b) = &e.frame {
+                        node["frame"] = json!({ "x": b.x, "y": b.y, "w": b.w, "h": b.h });
+                    }
+                    node
                 })
+                .collect();
+            result["tree"] = json!({ "elements": elements });
+        }
+
+        if let Some(screenshot) = state.screenshot {
+            use base64::{engine::general_purpose::STANDARD, Engine};
+            result["screenshot"] = json!(STANDARD.encode(&screenshot.data));
+        }
+
+        Ok(result)
+    }
+
+    async fn get_desktop_overview(&self, args: &Value) -> Result<Value, LxsError> {
+        let id = args["display_id"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
+        let driver = self.find_driver(id).await?;
+        let overview = driver.get_desktop_overview().await?;
+
+        let processes: Vec<Value> = overview
+            .processes
+            .iter()
+            .map(|p| json!({ "pid": p.pid, "name": p.name }))
+            .collect();
+        let windows: Vec<Value> = overview
+            .windows
+            .iter()
+            .map(|w| {
+                let mut node = json!({
+                    "window_id": w.id,
+                    "pid": w.pid,
+                    "title": w.title,
+                });
+                if let Some(b) = &w.bounds {
+                    node["bounds"] = json!({ "x": b.x, "y": b.y, "w": b.w, "h": b.h });
+                }
+                node
             })
             .collect();
-        Ok(json!({ "elements": elements }))
-    }
 
-    async fn element_bounds(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let pid = args["pid"]
-            .as_u64()
-            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
-            as u32;
-        let index = args["index"]
-            .as_u64()
-            .ok_or_else(|| LxsError::InvalidArgument("index required".into()))?
-            as usize;
-
-        let driver = self.find_driver(id).await?;
-        let bounds = driver.element_bounds(pid, index).await?;
-        Ok(json!({
-            "x": bounds.x,
-            "y": bounds.y,
-            "w": bounds.w,
-            "h": bounds.h,
-        }))
-    }
-
-    async fn perform_action(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let pid = args["pid"]
-            .as_u64()
-            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
-            as u32;
-        let index = args["index"]
-            .as_u64()
-            .ok_or_else(|| LxsError::InvalidArgument("index required".into()))?
-            as usize;
-        let action = args["action"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("action required".into()))?;
-
-        let driver = self.find_driver(id).await?;
-        driver.perform_action(pid, index, action).await?;
-        Ok(json!({ "success": true }))
-    }
-
-    async fn focus_element(&self, args: &Value) -> Result<Value, LxsError> {
-        let (id, pid, index) = Self::parse_pid_index(args)?;
-        let driver = self.find_driver(id).await?;
-        let ok = driver.focus_element(pid, index).await?;
-        Ok(json!({ "success": ok }))
-    }
-
-    async fn scroll_element(&self, args: &Value) -> Result<Value, LxsError> {
-        let (id, pid, index) = Self::parse_pid_index(args)?;
-        let direction = args["direction"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("direction required".into()))?;
-        let amount = args["amount"].as_u64().unwrap_or(1) as u32;
-        let driver = self.find_driver(id).await?;
-        driver.scroll_element(pid, index, direction, amount).await?;
-        Ok(json!({ "success": true }))
+        Ok(json!({ "processes": processes, "windows": windows }))
     }
 
     async fn set_value(&self, args: &Value) -> Result<Value, LxsError> {
-        let (id, pid, index) = Self::parse_pid_index(args)?;
-        let value = args["value"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("value required".into()))?;
-        let driver = self.find_driver(id).await?;
-        driver.set_value(pid, index, value).await?;
-        Ok(json!({ "success": true }))
-    }
-
-    async fn type_into_editable(&self, args: &Value) -> Result<Value, LxsError> {
-        let (id, pid, index) = Self::parse_pid_index(args)?;
-        let text = args["text"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("text required".into()))?;
-        let driver = self.find_driver(id).await?;
-        driver.type_into_editable(pid, index, text).await?;
-        Ok(json!({ "success": true }))
-    }
-
-    async fn find_element(&self, args: &Value) -> Result<Value, LxsError> {
-        let id = args["display_id"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
-        let pid = args["pid"]
-            .as_u64()
-            .ok_or_else(|| LxsError::InvalidArgument("pid required".into()))?
-            as u32;
-        let query = args["query"]
-            .as_str()
-            .ok_or_else(|| LxsError::InvalidArgument("query required".into()))?;
-        let driver = self.find_driver(id).await?;
-        let result = driver.find_element(pid, query).await?;
-        Ok(match result {
-            Some(e) => json!({
-                "found": true,
-                "index": e.index,
-                "role": e.role,
-                "name": e.name,
-                "description": e.description,
-                "value": e.value,
-                "checked": e.checked,
-                "enabled": e.enabled,
-                "selected": e.selected,
-                "actions": e.actions,
-            }),
-            None => json!({ "found": false }),
-        })
-    }
-
-    fn parse_pid_index(args: &Value) -> Result<(&str, u32, usize), LxsError> {
         let id = args["display_id"]
             .as_str()
             .ok_or_else(|| LxsError::InvalidArgument("display_id required".into()))?;
@@ -671,7 +609,13 @@ impl McpServer {
             .as_u64()
             .ok_or_else(|| LxsError::InvalidArgument("index required".into()))?
             as usize;
-        Ok((id, pid, index))
+        let value = args["value"]
+            .as_str()
+            .ok_or_else(|| LxsError::InvalidArgument("value required".into()))?;
+
+        let driver = self.find_driver(id).await?;
+        driver.set_value(pid, index, value).await?;
+        Ok(json!({ "success": true }))
     }
 
     async fn find_driver(&self, id: &str) -> Result<Arc<dyn Driver>, LxsError> {
@@ -726,14 +670,14 @@ fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" } }, "required": ["display_id", "pid"] }
         }),
         json!({
-            "name": "lxs_app_list",
-            "description": "List running applications on a display",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+            "name": "lxs_get_window_state",
+            "description": "Get window state: metadata, optional AT-SPI tree, optional screenshot",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "window_id": { "type": "integer" }, "include_tree": { "type": "boolean" }, "include_screenshot": { "type": "boolean" } }, "required": ["display_id", "pid", "window_id"] }
         }),
         json!({
             "name": "lxs_input_click",
-            "description": "Click at screen coordinates",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" }, "button": { "type": "string", "enum": ["left", "middle", "right"] }, "count": { "type": "integer", "minimum": 1 } }, "required": ["display_id", "x", "y"] }
+            "description": "Click at screen coordinates. Supports left/right/middle buttons and multiple clicks.",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" }, "button": { "type": "string", "enum": ["left", "right", "middle"] }, "count": { "type": "integer", "minimum": 1 } }, "required": ["display_id", "x", "y"] }
         }),
         json!({
             "name": "lxs_input_move",
@@ -751,64 +695,9 @@ fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "key": { "type": "string" }, "modifiers": { "type": "array", "items": { "type": "string" } } }, "required": ["display_id", "key"] }
         }),
         json!({
-            "name": "lxs_capture_screenshot",
-            "description": "Take a screenshot",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
-        }),
-        json!({
-            "name": "lxs_state_window",
-            "description": "Get the active window title",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
-        }),
-        json!({
-            "name": "lxs_state_tree",
-            "description": "Walk the AT-SPI accessibility tree for a process",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" } }, "required": ["display_id", "pid"] }
-        }),
-        json!({
-            "name": "lxs_state_element_bounds",
-            "description": "Get screen bounds of an indexed accessibility element",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" } }, "required": ["display_id", "pid", "index"] }
-        }),
-        json!({
-            "name": "lxs_perform_action",
-            "description": "Perform a named AT-SPI action on an indexed element",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "action": { "type": "string" } }, "required": ["display_id", "pid", "index", "action"] }
-        }),
-        json!({
-            "name": "lxs_state_focus_element",
-            "description": "Focus an indexed accessibility element without activating its window",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" } }, "required": ["display_id", "pid", "index"] }
-        }),
-        json!({
-            "name": "lxs_state_scroll_element",
-            "description": "Scroll an indexed accessibility element into view",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "direction": { "type": "string", "enum": ["up", "down", "left", "right"] }, "amount": { "type": "integer" } }, "required": ["display_id", "pid", "index", "direction"] }
-        }),
-        json!({
-            "name": "lxs_state_set_value",
-            "description": "Set the value of an indexed accessibility element",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "value": { "type": "string" } }, "required": ["display_id", "pid", "index", "value"] }
-        }),
-        json!({
-            "name": "lxs_state_type_into_editable",
-            "description": "Type text into an indexed editable accessibility element",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "text": { "type": "string" } }, "required": ["display_id", "pid", "index", "text"] }
-        }),
-        json!({
-            "name": "lxs_state_find_element",
-            "description": "Find the first accessibility element matching a query string",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "query": { "type": "string" } }, "required": ["display_id", "pid", "query"] }
-        }),
-        json!({
             "name": "lxs_input_scroll",
             "description": "Scroll by a delta",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "dx": { "type": "integer" }, "dy": { "type": "integer" } }, "required": ["display_id"] }
-        }),
-        json!({
-            "name": "lxs_input_get_cursor_position",
-            "description": "Get the current mouse cursor position",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
         }),
         json!({
             "name": "lxs_input_drag",
@@ -816,24 +705,54 @@ fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x1": { "type": "integer" }, "y1": { "type": "integer" }, "x2": { "type": "integer" }, "y2": { "type": "integer" } }, "required": ["display_id", "x1", "y1", "x2", "y2"] }
         }),
         json!({
+            "name": "lxs_input_get_cursor_position",
+            "description": "Get the current mouse cursor position",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_capture_screenshot",
+            "description": "Take a screenshot",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_capture_window",
+            "description": "Take a screenshot of a specific window",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "window_id": { "type": "integer" } }, "required": ["display_id", "window_id"] }
+        }),
+        json!({
+            "name": "lxs_get_desktop_overview",
+            "description": "Return desktop overview: running processes and visible windows",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+        }),
+        json!({
+            "name": "lxs_set_value",
+            "description": "Set the value of an AT-SPI editable element",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "value": { "type": "string" } }, "required": ["display_id", "pid", "index", "value"] }
+        }),
+        json!({
+            "name": "lxs_click_element",
+            "description": "Click an AT-SPI element by pid and index",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "pid": { "type": "integer" }, "index": { "type": "integer" }, "button": { "type": "string", "enum": ["left", "right", "middle"] } }, "required": ["display_id", "pid", "index"] }
+        }),
+        json!({
+            "name": "lxs_wait",
+            "description": "Wait for a number of milliseconds",
+            "inputSchema": { "type": "object", "properties": { "ms": { "type": "integer", "minimum": 0 } }, "required": ["ms"] }
+        }),
+        json!({
             "name": "lxs_window_focus",
-            "description": "Focus the active window",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+            "description": "Focus a window by id",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "window_id": { "type": "integer" } }, "required": ["display_id", "window_id"] }
         }),
         json!({
-            "name": "lxs_window_raise",
-            "description": "Raise the active window to the top",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
+            "name": "lxs_window_set_frame",
+            "description": "Set a window's position and size",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "window_id": { "type": "integer" }, "x": { "type": "integer" }, "y": { "type": "integer" }, "width": { "type": "integer" }, "height": { "type": "integer" } }, "required": ["display_id", "window_id", "x", "y", "width", "height"] }
         }),
         json!({
-            "name": "lxs_window_resize",
-            "description": "Resize the active window",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "width": { "type": "integer" }, "height": { "type": "integer" } }, "required": ["display_id", "width", "height"] }
-        }),
-        json!({
-            "name": "lxs_window_move",
-            "description": "Move the active window",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" } }, "required": ["display_id", "x", "y"] }
+            "name": "lxs_window_close",
+            "description": "Close a window by id",
+            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "window_id": { "type": "integer" } }, "required": ["display_id", "window_id"] }
         }),
         json!({
             "name": "lxs_clipboard_get",
@@ -844,21 +763,6 @@ fn tool_definitions() -> Vec<Value> {
             "name": "lxs_clipboard_set",
             "description": "Set text on the clipboard",
             "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "text": { "type": "string" } }, "required": ["display_id", "text"] }
-        }),
-        json!({
-            "name": "lxs_window_list",
-            "description": "List top-level windows",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" } }, "required": ["display_id"] }
-        }),
-        json!({
-            "name": "lxs_wait",
-            "description": "Wait for a specified duration in milliseconds",
-            "inputSchema": { "type": "object", "properties": { "ms": { "type": "integer", "minimum": 0 } }, "required": [] }
-        }),
-        json!({
-            "name": "lxs_capture_region",
-            "description": "Take a screenshot of a region",
-            "inputSchema": { "type": "object", "properties": { "display_id": { "type": "string" }, "x": { "type": "integer" }, "y": { "type": "integer" }, "w": { "type": "integer" }, "h": { "type": "integer" } }, "required": ["display_id", "x", "y", "w", "h"] }
         }),
         json!({
             "name": "lxs_display_info",
