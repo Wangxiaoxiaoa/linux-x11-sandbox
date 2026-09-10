@@ -135,10 +135,11 @@ MCP 配置大多数智能体使用 `mcpServers`。Claude Desktop 示例：
 | `lxs_app_launch` | 启动应用 |
 | `lxs_app_terminate` | 按 PID 终止应用 |
 | `lxs_app_list` | 列出应用 PID |
-| `lxs_input_click` | 在 `(x, y)` 点击 |
+| `lxs_input_click` | 在 `(x, y)` 点击，支持 `button` 和 `count` |
 | `lxs_input_move` | 移动光标 |
 | `lxs_input_scroll` | 滚动 |
 | `lxs_input_drag` | 从 `(x1, y1)` 拖动到 `(x2, y2)` |
+| `lxs_input_get_cursor_position` | 获取当前鼠标位置 |
 | `lxs_input_type` | 输入文本 |
 | `lxs_input_key` | 按键或组合键 |
 | `lxs_capture_screenshot` | 全屏截图 |
@@ -147,8 +148,10 @@ MCP 配置大多数智能体使用 `mcpServers`。Claude Desktop 示例：
 | `lxs_window_raise` | 将当前激活窗口置顶 |
 | `lxs_window_resize` | 调整当前激活窗口大小 |
 | `lxs_window_move` | 移动当前激活窗口 |
+| `lxs_window_list` | 列出顶层窗口 |
 | `lxs_clipboard_get` | 获取剪贴板文本 |
 | `lxs_clipboard_set` | 设置剪贴板文本 |
+| `lxs_wait` | 等待 `ms` 毫秒 |
 | `lxs_state_window` | 当前激活窗口标题 |
 | `lxs_state_tree` | AT-SPI 无障碍树 |
 | `lxs_state_element_bounds` | 元素边界 |

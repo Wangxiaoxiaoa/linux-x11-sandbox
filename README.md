@@ -136,10 +136,11 @@ Once connected, the agent can call:
 | `lxs_app_launch` | Launch an application |
 | `lxs_app_terminate` | Terminate by PID |
 | `lxs_app_list` | List app PIDs |
-| `lxs_input_click` | Click at `(x, y)` |
+| `lxs_input_click` | Click at `(x, y)` with optional `button` and `count` |
 | `lxs_input_move` | Move cursor |
 | `lxs_input_scroll` | Scroll |
 | `lxs_input_drag` | Drag from `(x1, y1)` to `(x2, y2)` |
+| `lxs_input_get_cursor_position` | Get current mouse position |
 | `lxs_input_type` | Type text |
 | `lxs_input_key` | Key or combo |
 | `lxs_capture_screenshot` | Full screenshot |
@@ -148,8 +149,10 @@ Once connected, the agent can call:
 | `lxs_window_raise` | Raise the active window |
 | `lxs_window_resize` | Resize the active window |
 | `lxs_window_move` | Move the active window |
+| `lxs_window_list` | List top-level windows |
 | `lxs_clipboard_get` | Get clipboard text |
 | `lxs_clipboard_set` | Set clipboard text |
+| `lxs_wait` | Wait for `ms` milliseconds |
 | `lxs_state_window` | Active window title |
 | `lxs_state_tree` | AT-SPI tree |
 | `lxs_state_element_bounds` | Element bounds |
