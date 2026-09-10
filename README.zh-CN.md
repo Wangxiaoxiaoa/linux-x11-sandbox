@@ -27,9 +27,20 @@
 
 可作为 **MCP 服务器**、**Rust SDK** 或 **可组合沙盒层**（Docker/VM 内）使用。
 
+## 特性
+
+| 特性 | 说明 |
+| --- | --- |
+| **独立 display** | 每个沙盒都是独立的 `DISPLAY`，拥有独立的 X 服务器和窗口管理器。 |
+| **24 个自动化工具** | 覆盖鼠标、键盘、窗口、元素、截图、剪贴板、状态和生命周期。 |
+| **MCP 服务器** | 通过 stdio 上的 JSON-RPC 接入任意 MCP 兼容智能体。 |
+| **Rust SDK** | 在 Rust 中直接组合 `Runtime`、`Display` 与 `Driver`。 |
+| **Docker 支持** | 提供开箱即用的 `Dockerfile` 与 `docker-compose.yml`。 |
+| **无头或有头** | CI 用 `xvfb`，可视化调试用 `xephyr`。 |
+
 ## 架构
 
-见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 了解 crate 布局与设计目标。
 
 ## 快速安装
 
@@ -47,13 +58,13 @@ sudo apt-get install -y xvfb openbox
 cargo build --release
 ```
 
-可执行文件：`target/release/linux-x11-sandbox`。
+二进制：`target/release/linux-x11-sandbox`。
 
 ---
 
-## 1. 作为 MCP 服务器
+## 作为 MCP 服务器使用
 
-服务器通过标准输入输出使用 JSON-RPC 2.0。
+服务器通过 stdin/stdout 上的 JSON-RPC 2.0 通信。
 
 ### 启动
 
@@ -61,34 +72,56 @@ cargo build --release
 ./target/release/linux-x11-sandbox
 ```
 
-### 工具列表
+### 工具分类
+
+#### Display 与应用生命周期
 
 | 工具 | 说明 |
-|------|------|
-| `lxs_display_create` | 创建 display（`backend`: `xvfb` 或 `xephyr`） |
+| --- | --- |
+| `lxs_display_create` | 创建 display（`backend`：`xvfb` 或 `xephyr`） |
 | `lxs_display_destroy` | 销毁 display |
 | `lxs_display_info` | 分辨率与应用数量 |
 | `lxs_app_launch` | 启动应用 |
 | `lxs_app_terminate` | 按 PID 终止应用 |
-| `lxs_input_click` | 在 `(x, y)` 点击，支持 `button`（`left`/`right`/`middle`）与 `count`（单击/双击/三击） |
+| `lxs_wait` | 等待指定毫秒 |
+
+#### 输入
+
+| 工具 | 说明 |
+| --- | --- |
+| `lxs_input_click` | 在 `(x, y)` 点击，支持 `button`（`left`/`right`/`middle`）与 `count` |
 | `lxs_input_move` | 移动光标 |
 | `lxs_input_scroll` | 滚动 |
 | `lxs_input_drag` | 从 `(x1, y1)` 拖动到 `(x2, y2)` |
 | `lxs_input_get_cursor_position` | 获取当前鼠标位置 |
 | `lxs_input_type` | 输入文本 |
 | `lxs_input_key` | 按键或组合键 |
-| `lxs_capture_screenshot` | 全屏截图 |
-| `lxs_capture_window` | 截取指定窗口 |
+
+#### 窗口管理
+
+| 工具 | 说明 |
+| --- | --- |
 | `lxs_window_focus` | 按 `window_id` 聚焦窗口 |
-| `lxs_window_set_frame` | 设置窗口位置和大小 |
+| `lxs_window_set_frame` | 设置窗口位置与大小 |
 | `lxs_window_close` | 按 `window_id` 关闭窗口 |
+
+#### 截图、剪贴板与状态
+
+| 工具 | 说明 |
+| --- | --- |
+| `lxs_capture_screenshot` | 全屏截图 |
+| `lxs_capture_window` | 指定窗口截图 |
 | `lxs_clipboard_get` | 获取剪贴板文本 |
 | `lxs_clipboard_set` | 设置剪贴板文本 |
 | `lxs_get_desktop_overview` | 桌面概览：进程与窗口 |
-| `lxs_get_window_state` | 窗口元数据 + 可选树 + 可选截图 |
-| `lxs_set_value` | 设置 AT-SPI 可编辑元素值 |
-| `lxs_click_element` | 按 `pid` 和 `index` 点击 AT-SPI 元素 |
-| `lxs_wait` | 等待 `ms` 毫秒 |
+| `lxs_get_window_state` | 窗口元数据 + 可选无障碍树 + 可选截图 |
+
+#### 无障碍操作
+
+| 工具 | 说明 |
+| --- | --- |
+| `lxs_set_value` | 设置 AT-SPI 可编辑元素的值 |
+| `lxs_click_element` | 按 `pid` 与 `index` 点击 AT-SPI 元素 |
 
 ### 示例会话
 
@@ -102,7 +135,7 @@ cargo build --release
 
 ---
 
-## 2. 作为 Rust SDK
+## 作为 Rust SDK 使用
 
 ```toml
 [dependencies]
@@ -135,14 +168,14 @@ async fn main() -> anyhow::Result<()> {
 
 ---
 
-## 3. Docker
+## Docker
 
 ```bash
 docker build -t linux-x11-sandbox .
 docker compose up -d
 ```
 
-使用 `scripts/docker-mcp.sh` 作为 MCP 命令，或运行 `docker exec -i <container> linux-x11-sandbox`。
+MCP 命令可使用 `scripts/docker-mcp.sh`，或运行 `docker exec -i <container> linux-x11-sandbox`。
 
 ---
 

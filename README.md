@@ -27,11 +27,22 @@ Typical uses:
 
 It can be used as an **MCP server**, a **Rust SDK**, or a **composable sandbox layer** inside Docker/VMs.
 
+## Features
+
+| Feature | Description |
+| --- | --- |
+| **Isolated displays** | Each sandbox is a separate `DISPLAY` with its own X server and window manager. |
+| **24 automation tools** | Mouse, keyboard, window, element, capture, clipboard, state, and lifecycle actions. |
+| **MCP server** | JSON-RPC over stdio; plug into any MCP-compatible agent. |
+| **Rust SDK** | Compose `Runtime`, `Display`, and `Driver` directly in Rust. |
+| **Docker support** | Ready-to-use `Dockerfile` and `docker-compose.yml`. |
+| **Headless or headed** | Use `xvfb` in CI or `xephyr` for visual debugging. |
+
 ## Architecture
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for crate layout.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for crate layout and design goals.
 
-## Quick install
+## Quick start
 
 ```bash
 pip install linux-x11-sandbox
@@ -51,7 +62,7 @@ Binary: `target/release/linux-x11-sandbox`.
 
 ---
 
-## 1. Use as an MCP server
+## Use as an MCP server
 
 The server speaks JSON-RPC 2.0 over stdin/stdout.
 
@@ -61,34 +72,56 @@ The server speaks JSON-RPC 2.0 over stdin/stdout.
 ./target/release/linux-x11-sandbox
 ```
 
-### Tool list
+### Tool categories
+
+#### Display & application lifecycle
 
 | Tool | Description |
-|------|-------------|
+| --- | --- |
 | `lxs_display_create` | Create display (`backend`: `xvfb` or `xephyr`) |
 | `lxs_display_destroy` | Destroy display |
 | `lxs_display_info` | Resolution and app count |
 | `lxs_app_launch` | Launch an application |
 | `lxs_app_terminate` | Terminate by PID |
-| `lxs_input_click` | Click at `(x, y)` with `button` (`left`/`right`/`middle`) and `count` (single/double/triple) |
+| `lxs_wait` | Wait for `ms` milliseconds |
+
+#### Input
+
+| Tool | Description |
+| --- | --- |
+| `lxs_input_click` | Click at `(x, y)` with `button` (`left`/`right`/`middle`) and `count` |
 | `lxs_input_move` | Move cursor |
 | `lxs_input_scroll` | Scroll |
 | `lxs_input_drag` | Drag from `(x1, y1)` to `(x2, y2)` |
 | `lxs_input_get_cursor_position` | Get current mouse position |
 | `lxs_input_type` | Type text |
 | `lxs_input_key` | Key or combo |
-| `lxs_capture_screenshot` | Full screenshot |
-| `lxs_capture_window` | Screenshot a specific window |
+
+#### Window management
+
+| Tool | Description |
+| --- | --- |
 | `lxs_window_focus` | Focus a window by `window_id` |
 | `lxs_window_set_frame` | Set a window's position and size |
 | `lxs_window_close` | Close a window by `window_id` |
+
+#### Capture, clipboard, and state
+
+| Tool | Description |
+| --- | --- |
+| `lxs_capture_screenshot` | Full screenshot |
+| `lxs_capture_window` | Screenshot a specific window |
 | `lxs_clipboard_get` | Get clipboard text |
 | `lxs_clipboard_set` | Set clipboard text |
 | `lxs_get_desktop_overview` | Desktop overview: processes and windows |
 | `lxs_get_window_state` | Window metadata + optional tree + optional screenshot |
+
+#### Accessibility actions
+
+| Tool | Description |
+| --- | --- |
 | `lxs_set_value` | Set AT-SPI editable element value |
 | `lxs_click_element` | Click an AT-SPI element by `pid` and `index` |
-| `lxs_wait` | Wait for `ms` milliseconds |
 
 ### Example session
 
@@ -102,7 +135,7 @@ The server speaks JSON-RPC 2.0 over stdin/stdout.
 
 ---
 
-## 2. Use as a Rust SDK
+## Use as a Rust SDK
 
 ```toml
 [dependencies]
@@ -135,7 +168,7 @@ async fn main() -> anyhow::Result<()> {
 
 ---
 
-## 3. Docker
+## Docker
 
 ```bash
 docker build -t linux-x11-sandbox .
