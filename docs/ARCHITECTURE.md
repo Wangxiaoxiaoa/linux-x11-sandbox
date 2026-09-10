@@ -288,397 +288,33 @@ Window manager launchers (e.g., `OpenboxWM`) live in `lxs-runtime/src/wm/`.
 
 All tools are prefixed with `lxs_`.
 
-### 7.1 Display Management
+| Tool | Purpose | Required args |
+|------|---------|---------------|
+| `lxs_display_create` | Create display (`backend`: `xvfb` or `xephyr`) | — |
+| `lxs_display_destroy` | Destroy display | `display_id` |
+| `lxs_display_info` | Resolution and app count | `display_id` |
+| `lxs_app_launch` | Launch an application | `display_id`, `command` |
+| `lxs_app_terminate` | Terminate by PID | `display_id`, `pid` |
+| `lxs_input_click` | Click at `(x, y)` with optional button/count | `display_id`, `x`, `y`, `button`, `count` |
+| `lxs_input_move` | Move cursor | `display_id`, `x`, `y` |
+| `lxs_input_scroll` | Scroll | `display_id` |
+| `lxs_input_drag` | Drag from `(x1, y1)` to `(x2, y2)` | `display_id`, `x1`, `y1`, `x2`, `y2` |
+| `lxs_input_get_cursor_position` | Get current mouse position | `display_id` |
+| `lxs_input_type` | Type text | `display_id`, `text` |
+| `lxs_input_key` | Press key or combo | `display_id`, `key` |
+| `lxs_capture_screenshot` | Full screenshot | `display_id` |
+| `lxs_capture_window` | Screenshot a specific window | `display_id`, `window_id` |
+| `lxs_window_focus` | Focus window by id | `display_id`, `window_id` |
+| `lxs_window_set_frame` | Set window position and size | `display_id`, `window_id`, `x`, `y`, `width`, `height` |
+| `lxs_window_close` | Close window by id | `display_id`, `window_id` |
+| `lxs_clipboard_get` | Get clipboard text | `display_id` |
+| `lxs_clipboard_set` | Set clipboard text | `display_id`, `text` |
+| `lxs_get_desktop_overview` | Desktop overview: processes and windows | `display_id` |
+| `lxs_get_window_state` | Window metadata + optional tree + optional screenshot | `display_id`, `pid`, `window_id` |
+| `lxs_set_value` | Set AT-SPI editable element value | `display_id`, `pid`, `index`, `value` |
+| `lxs_click_element` | Click an AT-SPI element by pid and index | `display_id`, `pid`, `index`, `button` |
+| `lxs_wait` | Wait for milliseconds | `ms` |
 
-#### `lxs_display_create`
-
-Create a new X11 display environment.
-
-```json
-{
-  "name": "lxs_display_create",
-  "description": "Create a new isolated X11 display environment",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "backend": { "type": "string", "enum": ["xvfb", "xephyr"], "default": "xvfb" },
-      "width": { "type": "integer", "default": 1280 },
-      "height": { "type": "integer", "default": 800 },
-      "depth": { "type": "integer", "default": 24 },
-      "driver": { "type": "string", "enum": ["native", "cua"], "default": "native" }
-    }
-  }
-}
-```
-
-Returns:
-
-```json
-{
-  "display_id": "d-abc123",
-  "display": ":99",
-  "backend": "xvfb",
-  "driver": "native",
-  "state": "running"
-}
-```
-
-#### `lxs_display_destroy`
-
-Destroy a display and clean up all resources.
-
-```json
-{
-  "name": "lxs_display_destroy",
-  "description": "Destroy a display and clean up all resources",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" }
-    },
-    "required": ["display_id"]
-  }
-}
-```
-
-#### `lxs_display_list`
-
-List all active displays.
-
-```json
-{
-  "name": "lxs_display_list",
-  "description": "List all active displays",
-  "inputSchema": { "type": "object" }
-}
-```
-
-#### `lxs_display_info`
-
-Get information about a specific display.
-
-```json
-{
-  "name": "lxs_display_info",
-  "description": "Get information about a specific display",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" }
-    },
-    "required": ["display_id"]
-  }
-}
-```
-
-### 7.2 Application Management
-
-#### `lxs_app_launch`
-
-Launch a GUI application on a display.
-
-```json
-{
-  "name": "lxs_app_launch",
-  "description": "Launch a GUI application on a display",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "command": { "type": "string" },
-      "args": { "type": "array", "items": { "type": "string" }, "default": [] },
-      "env": { "type": "object", "additionalProperties": { "type": "string" }, "default": {} },
-      "wait_ready_ms": { "type": "integer", "default": 5000 }
-    },
-    "required": ["display_id", "command"]
-  }
-}
-```
-
-Returns:
-
-```json
-{
-  "pid": 12345
-}
-```
-
-#### `lxs_app_terminate`
-
-Terminate an application by PID.
-
-```json
-{
-  "name": "lxs_app_terminate",
-  "description": "Terminate an application by PID",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "pid": { "type": "integer" }
-    },
-    "required": ["display_id", "pid"]
-  }
-}
-```
-
-#### `lxs_app_list`
-
-List applications running on a display.
-
-```json
-{
-  "name": "lxs_app_list",
-  "description": "List applications running on a display",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" }
-    },
-    "required": ["display_id"]
-  }
-}
-```
-
-### 7.3 Input Operations
-
-#### `lxs_input_click`
-
-Click at screen coordinates. Supports single/double click and button selection.
-
-```json
-{
-  "name": "lxs_input_click",
-  "description": "Click at screen coordinates",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "x": { "type": "integer" },
-      "y": { "type": "integer" },
-      "button": { "type": "string", "enum": ["left", "right", "middle"], "default": "left" },
-      "count": { "type": "integer", "default": 1 }
-    },
-    "required": ["display_id", "x", "y"]
-  }
-}
-```
-
-#### `lxs_input_move`
-
-Move the mouse cursor.
-
-```json
-{
-  "name": "lxs_input_move",
-  "description": "Move the mouse cursor to screen coordinates",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "x": { "type": "integer" },
-      "y": { "type": "integer" }
-    },
-    "required": ["display_id", "x", "y"]
-  }
-}
-```
-
-#### `lxs_input_scroll`
-
-Scroll the mouse wheel.
-
-```json
-{
-  "name": "lxs_input_scroll",
-  "description": "Scroll the mouse wheel",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "dx": { "type": "integer", "default": 0 },
-      "dy": { "type": "integer", "default": 0 }
-    },
-    "required": ["display_id"]
-  }
-}
-```
-
-#### `lxs_input_type`
-
-Type text.
-
-```json
-{
-  "name": "lxs_input_type",
-  "description": "Type text on the keyboard",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "text": { "type": "string" },
-      "interval_ms": { "type": "integer", "default": 0 }
-    },
-    "required": ["display_id", "text"]
-  }
-}
-```
-
-#### `lxs_input_key`
-
-Press a key or key combination.
-
-```json
-{
-  "name": "lxs_input_key",
-  "description": "Press a key or key combination",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "key": { "type": "string" },
-      "modifiers": { "type": "array", "items": { "type": "string" }, "default": [] },
-      "press": { "type": "boolean", "default": true },
-      "release": { "type": "boolean", "default": true }
-    },
-    "required": ["display_id", "key"]
-  }
-}
-```
-
-### 7.4 Capture & State
-
-#### `lxs_capture_screenshot`
-
-Capture a full-display screenshot.
-
-```json
-{
-  "name": "lxs_capture_screenshot",
-  "description": "Take a screenshot of a display",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "format": { "type": "string", "enum": ["png", "jpeg"], "default": "png" }
-    },
-    "required": ["display_id"]
-  }
-}
-```
-
-Returns a base64-encoded PNG/JPEG image.
-
-#### `lxs_capture_region`
-
-Capture a screen region.
-
-```json
-{
-  "name": "lxs_capture_region",
-  "description": "Take a screenshot of a screen region",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "x": { "type": "integer" },
-      "y": { "type": "integer" },
-      "width": { "type": "integer" },
-      "height": { "type": "integer" },
-      "format": { "type": "string", "enum": ["png", "jpeg"], "default": "png" }
-    },
-    "required": ["display_id", "x", "y", "width", "height"]
-  }
-}
-```
-
-#### `lxs_state_window`
-
-Get the active/top window state.
-
-```json
-{
-  "name": "lxs_state_window",
-  "description": "Get the active window state",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" }
-    },
-    "required": ["display_id"]
-  }
-}
-```
-
-#### `lxs_state_tree`
-
-Get the AT-SPI accessibility tree.
-
-```json
-{
-  "name": "lxs_state_tree",
-  "description": "Get the accessibility tree via AT-SPI",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "pid": { "type": "integer" }
-    },
-    "required": ["display_id"]
-  }
-}
-```
-
-#### `lxs_state_element_bounds`
-
-Get element bounds by index.
-
-```json
-{
-  "name": "lxs_state_element_bounds",
-  "description": "Get the bounds of an accessibility element",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "pid": { "type": "integer" },
-      "index": { "type": "integer" }
-    },
-    "required": ["display_id", "pid", "index"]
-  }
-}
-```
-
-#### `lxs_perform_action`
-
-Perform an AT-SPI action on an element.
-
-```json
-{
-  "name": "lxs_perform_action",
-  "description": "Perform an AT-SPI action on an element",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "display_id": { "type": "string" },
-      "pid": { "type": "integer" },
-      "index": { "type": "integer" },
-      "action": { "type": "string" }
-    },
-    "required": ["display_id", "pid", "index", "action"]
-  }
-}
-```
-
-### 7.5 Tool Summary
-
-| Category | Tools | Count |
-|----------|-------|-------|
-| Display management | `lxs_display_create`, `lxs_display_destroy`, `lxs_display_list`, `lxs_display_info` | 4 |
-| Application management | `lxs_app_launch`, `lxs_app_terminate`, `lxs_app_list` | 3 |
-| Input | `lxs_input_click`, `lxs_input_move`, `lxs_input_scroll`, `lxs_input_type`, `lxs_input_key` | 5 |
-| Capture & State | `lxs_capture_screenshot`, `lxs_capture_region`, `lxs_state_window`, `lxs_state_tree`, `lxs_state_element_bounds`, `lxs_perform_action` | 6 |
-| **Total** | | **18** |
 
 ## 8. SDK API Surface
 
@@ -754,9 +390,9 @@ agent
   └─► lxs_app_launch({ display_id: "d1", command: "wechat" })
        └─► Display :99 launches wechat
 
-  └─► lxs_state_tree({ display_id: "d1" })
+  └─► lxs_get_window_state({ display_id: "d1", pid: 1234, window_id: 12345678, include_tree: true })
        └─► NativeDriver queries AT-SPI on :99
-       ◄── returns tree
+       ◄── returns window metadata + tree
 
   └─► lxs_input_click({ display_id: "d1", x: 100, y: 200 })
        └─► NativeDriver injects XTest click on :99

@@ -1,29 +1,10 @@
 """Hatch build hook: compile the Rust binary and bundle it in the wheel."""
 
-import os
-import platform
 import shutil
 import subprocess
 from pathlib import Path
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
-
-
-def _get_wheel_tag() -> str:
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-    if system == "linux":
-        if machine in ("x86_64", "amd64"):
-            platform_tag = "linux_x86_64"
-        elif machine in ("arm64", "aarch64"):
-            platform_tag = "linux_aarch64"
-        else:
-            platform_tag = f"linux_{machine}"
-    elif system == "darwin":
-        platform_tag = "macosx_11_0_arm64"
-    else:
-        platform_tag = f"{system}_{machine}"
-    return f"py3-none-{platform_tag}"
 
 
 class CustomBuildHook(BuildHookInterface):
@@ -49,14 +30,13 @@ class CustomBuildHook(BuildHookInterface):
         dst = bin_dir / binary_name
 
         shutil.copy2(src, dst)
-        os.chmod(dst, 0o755)
+        dst.chmod(0o755)
 
         skill_src = project_root / "skills" / "linux-x11-sandbox"
-        if skill_src.exists():
-            skill_dst = pkg_dir / "skill"
-            if skill_dst.exists():
-                shutil.rmtree(skill_dst)
-            shutil.copytree(skill_src, skill_dst)
+        skill_dst = pkg_dir / "skill"
+        if skill_dst.exists():
+            shutil.rmtree(skill_dst)
+        shutil.copytree(skill_src, skill_dst)
 
-        build_data["tag"] = _get_wheel_tag()
+        build_data["tag"] = "py3-none-linux_x86_64"
         build_data["pure_python"] = False

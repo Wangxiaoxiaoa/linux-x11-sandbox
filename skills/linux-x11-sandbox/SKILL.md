@@ -1,100 +1,75 @@
 ---
 name: linux-x11-sandbox
-description: Run and automate Linux GUI applications in isolated X11 displays. Use when you need to launch a GUI app, interact with it via mouse/keyboard, take screenshots, or inspect the AT-SPI accessibility tree without affecting the host desktop.
+description: Run and automate Linux GUI applications in isolated X11 displays.
 license: MIT
-compatibility: Linux with xvfb and openbox installed. Optional host X display required for visible Xephyr backend.
+compatibility: Linux with xvfb and openbox installed.
 ---
 
 # linux-x11-sandbox
 
-`linux-x11-sandbox` provides isolated X11 displays and a built-in automation driver exposed through an MCP stdio server.
+Isolated X11 displays with a built-in automation driver, exposed through an MCP stdio server.
 
 ## When to use
 
 - Launch a GUI application in a clean environment.
-- Take screenshots of an app for verification.
-- Send mouse/keyboard input to an app without touching the host desktop.
+- Take screenshots for verification.
+- Send mouse/keyboard input without touching the host desktop.
 - Read the AT-SPI accessibility tree or perform actions on UI elements.
-- Run multiple independent displays at the same time.
 
 ## Setup
-
-Build the MCP server once:
 
 ```bash
 cd ../../../
 cargo build --release
 ```
 
-Verify system dependencies:
-
-```bash
-which xvfb openbox
-```
-
-If missing on Debian/Ubuntu:
-
-```bash
-sudo apt-get install -y xvfb openbox
-```
+Requires `xvfb` and `openbox`.
 
 ## Start the MCP server
-
-Run the binary from the project root. It speaks MCP over stdin/stdout.
 
 ```bash
 cd ../../../
 ./target/release/linux-x11-sandbox
 ```
 
-All communication uses JSON-RPC 2.0.
-
 ## Core workflow
 
-1. **Initialize** the MCP connection.
-2. **Create a display** with `lxs_display_create`. Default backend is headless `Xvfb`. Use `{"backend": "xephyr"}` for a visible window (requires `DISPLAY` to point to a host X server).
-3. **Launch an app** with `lxs_app_launch`.
-4. **Interact**: click, type, screenshot, or read the AT-SPI tree.
-5. **Terminate apps** and **destroy the display** to clean up.
+1. Initialize the MCP connection.
+2. Create a display with `lxs_display_create` (default `xvfb`, use `{"backend": "xephyr"}` for visible).
+3. Launch an app with `lxs_app_launch`.
+4. Interact: click, type, screenshot, read AT-SPI tree.
+5. Terminate apps and destroy the display.
 
 ## Tool reference
 
 | Tool | Purpose |
 |------|---------|
-| `lxs_display_create` | Create display. Args: `backend` (`xvfb` or `xephyr`). Returns `display_id` and `display`. |
-| `lxs_display_destroy` | Destroy display and all its apps. Args: `display_id`. |
-| `lxs_display_info` | Get resolution and app count. Args: `display_id`. |
-| `lxs_app_launch` | Launch a command. Args: `display_id`, `command`, `args` (array). Returns `pid`. |
-| `lxs_app_terminate` | Kill app by PID. Args: `display_id`, `pid`. |
-| `lxs_app_list` | List app PIDs. Args: `display_id`. |
-| `lxs_input_click` | Click at `(x, y)`. Args: `display_id`, `x`, `y`, `button` (`left`/`middle`/`right`), `count` (optional). |
-| `lxs_input_move` | Move cursor to `(x, y)`. |
-| `lxs_input_scroll` | Scroll. Args: `dx`, `dy`. |
-| `lxs_input_drag` | Drag from `(x1, y1)` to `(x2, y2)`. |
-| `lxs_input_get_cursor_position` | Get current cursor position. |
-| `lxs_input_type` | Type text. Arg: `text`. |
-| `lxs_input_key` | Press key or combo. Args: `key`, `modifiers` (array). |
-| `lxs_capture_screenshot` | Base64 PNG screenshot. |
-| `lxs_capture_region` | Region screenshot. Args: `x`, `y`, `width`, `height`. |
-| `lxs_window_focus` | Focus the active window. |
-| `lxs_window_raise` | Raise the active window. |
-| `lxs_window_resize` | Resize active window. Args: `width`, `height`. |
-| `lxs_window_move` | Move active window. Args: `x`, `y`. |
-| `lxs_window_list` | List top-level windows. |
-| `lxs_clipboard_get` | Get clipboard text. |
-| `lxs_clipboard_set` | Set clipboard text. Arg: `text`. |
-| `lxs_wait` | Wait. Arg: `ms`. |
-| `lxs_state_window` | Active window title. Returns `{"title": "..."}` or `null`. |
-| `lxs_state_tree` | AT-SPI tree. Returns elements with `index`, `role`, `name`, `description`, `value`, `checked`, `enabled`, `selected`, `actions`. |
-| `lxs_state_element_bounds` | Bounds of element by `element_index`. |
-| `lxs_perform_action` | Perform AT-SPI action. Args: `pid`, `element_index`, `action`. |
-| `lxs_state_focus_element` | Focus element without raising window. Args: `pid`, `element_index`. |
-| `lxs_state_scroll_element` | Scroll element into view. Args: `pid`, `element_index`, `direction` (`up`/`down`/`left`/`right`). |
-| `lxs_state_set_value` | Set element value. Args: `pid`, `element_index`, `value`. |
-| `lxs_state_type_into_editable` | Type text into editable element. Args: `pid`, `element_index`, `text`. |
-| `lxs_state_find_element` | Find first element matching query. Args: `pid`, `query`. |
+| `lxs_display_create` | Args: `backend` (`xvfb`/`xephyr`). Returns `display_id`, `display`. |
+| `lxs_display_destroy` | Args: `display_id`. |
+| `lxs_display_info` | Args: `display_id`. Returns `display`, `width`, `height`, `app_count`. |
+| `lxs_app_launch` | Args: `display_id`, `command`, `args` (array). Returns `pid`. |
+| `lxs_app_terminate` | Args: `display_id`, `pid`. |
+| `lxs_input_click` | Args: `display_id`, `x`, `y`, optional `button` (`left`/`right`/`middle`), optional `count`. |
+| `lxs_input_move` | Args: `display_id`, `x`, `y`. |
+| `lxs_input_scroll` | Args: `display_id`, `dx`, `dy`. |
+| `lxs_input_drag` | Args: `display_id`, `x1`, `y1`, `x2`, `y2`. |
+| `lxs_input_get_cursor_position` | Args: `display_id`. Returns `x`, `y`. |
+| `lxs_input_type` | Args: `display_id`, `text`. |
+| `lxs_input_key` | Args: `display_id`, `key`, `modifiers` (array). |
+| `lxs_capture_screenshot` | Args: `display_id`. Returns base64 PNG. |
+| `lxs_capture_window` | Args: `display_id`, `window_id`. Returns base64 PNG. |
+| `lxs_window_focus` | Args: `display_id`, `window_id`. |
+| `lxs_window_set_frame` | Args: `display_id`, `window_id`, `x`, `y`, `width`, `height`. |
+| `lxs_window_close` | Args: `display_id`, `window_id`. |
+| `lxs_clipboard_get` | Args: `display_id`. Returns `text`. |
+| `lxs_clipboard_set` | Args: `display_id`, `text`. |
+| `lxs_get_desktop_overview` | Args: `display_id`. Returns `processes` (`pid`, `name`) and `windows` (`window_id`, `pid`, `title`, `bounds`). |
+| `lxs_get_window_state` | Args: `display_id`, `pid`, `window_id`, `include_tree` (default true), `include_screenshot` (default false). Returns `window_id`, `title`, `app_name`, `bounds`, optional `tree`, optional `screenshot` (base64 PNG). |
+| `lxs_set_value` | Args: `display_id`, `pid`, `index`, `value`. |
+| `lxs_click_element` | Args: `display_id`, `pid`, `index`, optional `button` (`left`/`right`/`middle`). |
+| `lxs_wait` | Args: `ms`. |
 
-## Example: launch and screenshot
+## Example
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"agent","version":"1.0"}}}
@@ -104,26 +79,8 @@ All communication uses JSON-RPC 2.0.
 {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"lxs_display_destroy","arguments":{"display_id":"d-99"}}}
 ```
 
-## Example: click an AT-SPI element
-
-1. Get the tree:
-
-```json
-{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"lxs_state_tree","arguments":{"display_id":"d-99","pid":12345}}}
-```
-
-2. Pick an element with a non-empty `actions` list.
-3. Call `lxs_perform_action` with `pid`, `element_index`, and one of the supported `action` names.
-
 ## Tips
 
-- Always destroy displays when done to free the X server and application processes.
-- Use `lxs_input_click` before `lxs_input_type` or `lxs_input_key` when the target window needs focus.
-- Some apps (e.g., Chromium) need environment variables to enable AT-SPI; the runtime injects these automatically.
-- For headed debugging, use `{"backend": "xephyr"}` and set `DISPLAY` to a running host X server.
-
-## More documentation
-
-- English README: [README.md](../../../README.md)
-- 中文 README: [README.zh-CN.md](../../../README.zh-CN.md)
-- Architecture: [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md)
+- Always destroy displays when done.
+- Click inside a window before typing if the target needs focus.
+- For AT-SPI, launch apps with their own accessibility flags if needed.

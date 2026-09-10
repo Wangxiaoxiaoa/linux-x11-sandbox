@@ -30,15 +30,7 @@ def _link_skill(target_dir: Path) -> None:
     _log(f"Linked skill -> {link}")
 
 
-def _backup(path: Path) -> None:
-    backup = path.with_suffix(path.suffix + ".lxs-backup")
-    if path.exists() and not backup.exists():
-        shutil.copy2(path, backup)
-        _log(f"Backed up {path} -> {backup}")
-
-
 def _update_json_config(path: Path, key: str, value: str) -> None:
-    _backup(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     data: dict = {}
     if path.exists():
