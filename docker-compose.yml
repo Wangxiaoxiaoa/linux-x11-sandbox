@@ -2,8 +2,8 @@ services:
   linux-x11-sandbox:
     build: .
     container_name: linux-x11-sandbox
-    # Keep the container running so agents can exec into it.
-    command: ["sleep", "infinity"]
+    # Run the long-lived daemon; agents exec in with `linux-x11-sandbox mcp`.
+    command: ["serve"]
     environment:
       - DISPLAY=:99
     # Share host IPC for better X11/Shm performance (optional).

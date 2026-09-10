@@ -10,16 +10,19 @@ The MCP server binary is `target/release/linux-x11-sandbox`.
 
 ## Run the MCP server
 
-```bash
-./target/release/linux-x11-sandbox
-```
+The MCP server is a long-lived daemon plus a per-agent stdio proxy.
 
-The server speaks MCP over stdio.
+```bash
+./target/release/linux-x11-sandbox serve  # start daemon
+./target/release/linux-x11-sandbox mcp    # stdio proxy (auto-starts daemon)
+./target/release/linux-x11-sandbox status # check daemon
+./target/release/linux-x11-sandbox stop   # stop daemon
+```
 
 ## Example MCP session
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"demo","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lxs_display_create","arguments":{}}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lxs_app_launch","arguments":{"display_id":"d-99","command":"xterm","args":[]}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lxs_capture_screenshot","arguments":{"display_id":"d-99"}}}
@@ -32,4 +35,4 @@ The server speaks MCP over stdio.
 cargo test -- --test-threads=1
 ```
 
-Integration tests live in `lxs/mcp/tests/integration.rs`. They exercise the MCP server end-to-end and must run sequentially because each test allocates X11 displays.
+Integration tests live in `lxs/daemon/tests/integration.rs`. They exercise the daemon end-to-end and must run sequentially because each test allocates X11 displays.

@@ -33,7 +33,7 @@ It can be used as an **MCP server**, a **Rust SDK**, or a **composable sandbox l
 | --- | --- |
 | **Isolated displays** | Each sandbox is a separate `DISPLAY` with its own X server and window manager. |
 | **24 automation tools** | Mouse, keyboard, window, element, capture, clipboard, state, and lifecycle actions. |
-| **MCP server** | JSON-RPC over stdio; plug into any MCP-compatible agent. |
+| **MCP server** | Daemon + stdio proxy; plug into any MCP-compatible agent. |
 | **Rust SDK** | Compose `Runtime`, `Display`, and `Driver` directly in Rust. |
 | **Docker support** | Ready-to-use `Dockerfile` and `docker-compose.yml`. |
 | **Headless or headed** | Use `xvfb` in CI or `xephyr` for visual debugging. |
@@ -64,12 +64,15 @@ Binary: `target/release/linux-x11-sandbox`.
 
 ## Use as an MCP server
 
-The server speaks JSON-RPC 2.0 over stdin/stdout.
+A long-lived `linux-x11-sandbox serve` daemon owns displays and drivers. Each agent runs a lightweight `linux-x11-sandbox mcp` stdio proxy that forwards JSON-RPC to the daemon over a Unix socket.
 
 ### Launch
 
 ```bash
-./target/release/linux-x11-sandbox
+./target/release/linux-x11-sandbox serve   # start daemon
+./target/release/linux-x11-sandbox mcp     # stdio proxy (auto-starts daemon)
+./target/release/linux-x11-sandbox status  # check daemon
+./target/release/linux-x11-sandbox stop    # stop daemon
 ```
 
 ### Tool categories
@@ -78,7 +81,9 @@ The server speaks JSON-RPC 2.0 over stdin/stdout.
 
 | Tool | Description |
 | --- | --- |
-| `lxs_display_create` | Create display (`backend`: `xvfb` or `xephyr`) |
+| `lxs_display_create` | Create display (`backend`: `xvfb` or `xephyr`, `persistent`: bool) |
+| `lxs_display_attach` | Attach to an existing display (e.g. `:0`) |
+| `lxs_display_detach` | Detach from an existing display without destroying it |
 | `lxs_display_destroy` | Destroy display |
 | `lxs_display_info` | Resolution and app count |
 | `lxs_app_launch` | Launch an application |
@@ -126,7 +131,7 @@ The server speaks JSON-RPC 2.0 over stdin/stdout.
 ### Example session
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"agent","version":"1.0"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lxs_display_create","arguments":{}}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lxs_app_launch","arguments":{"display_id":"d-99","command":"xterm","args":[]}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lxs_capture_screenshot","arguments":{"display_id":"d-99"}}}

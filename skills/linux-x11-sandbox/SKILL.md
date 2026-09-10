@@ -7,7 +7,7 @@ compatibility: Linux with xvfb and openbox installed.
 
 # linux-x11-sandbox
 
-Isolated X11 displays with a built-in automation driver, exposed through an MCP stdio server.
+Isolated X11 displays with a built-in automation driver, exposed through a daemon + MCP stdio proxy.
 
 ## When to use
 
@@ -29,7 +29,8 @@ Requires `xvfb` and `openbox`.
 
 ```bash
 cd ../../../
-./target/release/linux-x11-sandbox
+./target/release/linux-x11-sandbox serve   # start daemon
+./target/release/linux-x11-sandbox mcp     # stdio proxy (auto-starts daemon)
 ```
 
 ## Core workflow
@@ -44,7 +45,9 @@ cd ../../../
 
 | Tool | Purpose |
 |------|---------|
-| `lxs_display_create` | Args: `backend` (`xvfb`/`xephyr`). Returns `display_id`, `display`. |
+| `lxs_display_create` | Args: `backend` (`xvfb`/`xephyr`), optional `persistent`. Returns `display_id`, `display`. |
+| `lxs_display_attach` | Args: `display_id` (e.g. `:0`). Attach to an existing display. |
+| `lxs_display_detach` | Args: `display_id`. Detach without destroying. |
 | `lxs_display_destroy` | Args: `display_id`. |
 | `lxs_display_info` | Args: `display_id`. Returns `display`, `width`, `height`, `app_count`. |
 | `lxs_app_launch` | Args: `display_id`, `command`, `args` (array). Returns `pid`. |
@@ -72,7 +75,7 @@ cd ../../../
 ## Example
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"agent","version":"1.0"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lxs_display_create","arguments":{}}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lxs_app_launch","arguments":{"display_id":"d-99","command":"xterm","args":[]}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lxs_capture_screenshot","arguments":{"display_id":"d-99"}}}

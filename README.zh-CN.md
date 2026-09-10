@@ -33,7 +33,7 @@
 | --- | --- |
 | **独立 display** | 每个沙盒都是独立的 `DISPLAY`，拥有独立的 X 服务器和窗口管理器。 |
 | **24 个自动化工具** | 覆盖鼠标、键盘、窗口、元素、截图、剪贴板、状态和生命周期。 |
-| **MCP 服务器** | 通过 stdio 上的 JSON-RPC 接入任意 MCP 兼容智能体。 |
+| **MCP 服务器** | 守护进程 + stdio 代理；接入任意 MCP 兼容智能体。 |
 | **Rust SDK** | 在 Rust 中直接组合 `Runtime`、`Display` 与 `Driver`。 |
 | **Docker 支持** | 提供开箱即用的 `Dockerfile` 与 `docker-compose.yml`。 |
 | **无头或有头** | CI 用 `xvfb`，可视化调试用 `xephyr`。 |
@@ -64,12 +64,15 @@ cargo build --release
 
 ## 作为 MCP 服务器使用
 
-服务器通过 stdin/stdout 上的 JSON-RPC 2.0 通信。
+`linux-x11-sandbox serve` 守护进程持有 display 与驱动；每个智能体运行轻量的 `linux-x11-sandbox mcp` stdio 代理，通过 Unix socket 转发 JSON-RPC。
 
 ### 启动
 
 ```bash
-./target/release/linux-x11-sandbox
+./target/release/linux-x11-sandbox serve   # 启动守护进程
+./target/release/linux-x11-sandbox mcp     # stdio 代理（自动启动守护进程）
+./target/release/linux-x11-sandbox status  # 检查守护进程
+./target/release/linux-x11-sandbox stop    # 停止守护进程
 ```
 
 ### 工具分类
@@ -78,7 +81,9 @@ cargo build --release
 
 | 工具 | 说明 |
 | --- | --- |
-| `lxs_display_create` | 创建 display（`backend`：`xvfb` 或 `xephyr`） |
+| `lxs_display_create` | 创建 display（`backend`：`xvfb` 或 `xephyr`，`persistent`：布尔值） |
+| `lxs_display_attach` | 附加到已有 display（如 `:0`） |
+| `lxs_display_detach` | 从已有 display 分离，不销毁 |
 | `lxs_display_destroy` | 销毁 display |
 | `lxs_display_info` | 分辨率与应用数量 |
 | `lxs_app_launch` | 启动应用 |
@@ -126,7 +131,7 @@ cargo build --release
 ### 示例会话
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"agent","version":"1.0"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lxs_display_create","arguments":{}}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lxs_app_launch","arguments":{"display_id":"d-99","command":"xterm","args":[]}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lxs_capture_screenshot","arguments":{"display_id":"d-99"}}}

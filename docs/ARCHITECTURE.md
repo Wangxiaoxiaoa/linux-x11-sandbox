@@ -8,9 +8,9 @@
 
 The system is designed to be consumed in three ways:
 
-1. **MCP Server** — integrated by AI agents (Codex, Claude, DeepSeek Harness, etc.) via the Model Context Protocol.
+1. **MCP Server** — integrated by AI agents via the Model Context Protocol. A long-lived `linux-x11-sandbox serve` daemon owns displays and drivers; each agent runs a lightweight `linux-x11-sandbox mcp` stdio-to-socket proxy.
 2. **Rust SDK** — embedded directly into Rust applications as a library.
-3. **Plugin / External Sandbox Integration** — embedded or orchestrated by other sandbox platforms (e2b, Daytona, Docker, custom container runtimes) through standard process, C FFI, or network interfaces.
+3. **Plugin / External Sandbox Integration** — embedded or orchestrated by other sandbox platforms through standard process or network interfaces.
 
 ## 2. Design Goals
 
@@ -32,22 +32,25 @@ The system is designed to be consumed in three ways:
 
 The primary integration path for AI agents. `linux-x11-sandbox` exposes a set of MCP tools prefixed with `lxs_`.
 
-Supported transports:
-
-- `stdio` — local agent integration (default).
-- `sse` / HTTP — remote/cloud integration.
-
-Example agent configuration:
+The default integration is stdio:
 
 ```json
 {
   "mcpServers": {
     "linux-x11-sandbox": {
       "command": "linux-x11-sandbox",
-      "args": ["mcp", "--transport", "stdio"]
+      "args": ["mcp"]
     }
   }
 }
+```
+
+The proxy auto-starts the daemon if it is not already running. For explicit control:
+
+```bash
+linux-x11-sandbox serve   # start daemon
+linux-x11-sandbox status  # check daemon
+linux-x11-sandbox stop    # stop daemon
 ```
 
 ### 3.2 Rust SDK
@@ -98,8 +101,8 @@ linux-x11-sandbox/
 │   ├── state/                  # native state backends (capture + a11y)
 │   ├── driver/                 # Driver implementations (native + optional cua)
 │   ├── runtime/                # runtime engine (display, xserver, wm, process)
-│   └── mcp/                    # MCP server + binary entry
-└── lxs/mcp/tests/              # MCP integration tests
+│   └── daemon/                 # daemon + MCP stdio proxy + binary entry
+└── lxs/daemon/tests/           # daemon integration tests
 ```
 
 ### 4.1 Crate Responsibilities
@@ -111,7 +114,7 @@ linux-x11-sandbox/
 | `lxs-state` | Native state primitives: screenshot, window state, AT-SPI tree, element bounds, actions. | `lxs-core` |
 | `lxs-driver` | Implements the `Driver` trait: `NativeDriver` (combines action + state) and optional `CuaDriver` adapter. | `lxs-core`, `lxs-action`, `lxs-state` |
 | `lxs-runtime` | Orchestrates displays: X server/WM/process lifecycle, display allocation, driver injection. | `lxs-core`, `lxs-driver` |
-| `lxs-mcp` | MCP server, tool routing, transport adapters, CLI binary. | `lxs-core`, `lxs-runtime` |
+| `lxs-daemon` | Long-lived daemon that owns displays and drivers; MCP stdio proxy; CLI binary. | `lxs-core`, `lxs-runtime` |
 
 ### 4.2 Dependency Direction
 
@@ -121,7 +124,7 @@ lxs-core
   ├── lxs-state
   ├── lxs-driver  (depends on action + state, implements Driver trait)
   └── lxs-runtime (depends on driver, orchestrates everything)
-        └── lxs-mcp
+        └── lxs-daemon
 ```
 
 No reverse dependencies.
@@ -292,6 +295,8 @@ All tools are prefixed with `lxs_`.
 | Tool | Purpose | Required args |
 |------|---------|---------------|
 | `lxs_display_create` | Create display (`backend`: `xvfb` or `xephyr`) | — |
+| `lxs_display_attach` | Attach to an existing display (e.g. `:0`) | `display_id` |
+| `lxs_display_detach` | Detach from an existing display without destroying it | `display_id` |
 | `lxs_display_destroy` | Destroy display | `display_id` |
 | `lxs_display_info` | Resolution and app count | `display_id` |
 | `lxs_app_launch` | Launch an application | `display_id`, `command` |
@@ -363,14 +368,14 @@ void lxs_runtime_free(lxs_runtime_t* rt);
 
 ### 9.3 Subprocess + MCP/HTTP
 
-External sandboxes spawn `linux-x11-sandbox serve` and control it via MCP or HTTP.
+External sandboxes spawn `linux-x11-sandbox serve` and control it via MCP over the Unix socket.
 
 ```bash
-docker run -p 8080:8080 linux-x11-sandbox:latest serve --transport sse --port 8080
+docker run linux-x11-sandbox:latest serve
 ```
 
 ```bash
-linux-x11-sandbox serve --transport mcp-stdio
+linux-x11-sandbox serve
 ```
 
 No custom adapter is required on either side.

@@ -15,3 +15,10 @@ python/src/linux_x11_sandbox/bin/
 python/src/linux_x11_sandbox/skill/
 .pytest_cache/
 .mypy_cache/
+
+# Local agent configuration directories
+.qwen/
+.kimi-code/
+.codex/
+.opencode/
+.pi/
