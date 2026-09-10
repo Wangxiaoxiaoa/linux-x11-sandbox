@@ -139,10 +139,17 @@ Once connected, the agent can call:
 | `lxs_input_click` | Click at `(x, y)` |
 | `lxs_input_move` | Move cursor |
 | `lxs_input_scroll` | Scroll |
+| `lxs_input_drag` | Drag from `(x1, y1)` to `(x2, y2)` |
 | `lxs_input_type` | Type text |
 | `lxs_input_key` | Key or combo |
 | `lxs_capture_screenshot` | Full screenshot |
 | `lxs_capture_region` | Region screenshot |
+| `lxs_window_focus` | Focus the active window |
+| `lxs_window_raise` | Raise the active window |
+| `lxs_window_resize` | Resize the active window |
+| `lxs_window_move` | Move the active window |
+| `lxs_clipboard_get` | Get clipboard text |
+| `lxs_clipboard_set` | Set clipboard text |
 | `lxs_state_window` | Active window title |
 | `lxs_state_tree` | AT-SPI tree |
 | `lxs_state_element_bounds` | Element bounds |
@@ -216,12 +223,47 @@ Docker / e2b / Daytona / VM
     └── target application
 ```
 
-The host only needs to:
-
-1. Provide the sandbox image with `xvfb`, `openbox`, and the built binary.
-2. Expose the MCP stdio server to the agent.
-
 This keeps filesystem/network isolation handled by the outer sandbox while giving the agent a real GUI environment to interact with.
+
+### 3.1 Docker
+
+Build the image:
+
+```bash
+docker build -t linux-x11-sandbox .
+```
+
+Run a persistent container:
+
+```bash
+docker compose up -d
+```
+
+Use the bundled bridge script as the MCP server in your agent config:
+
+```json
+{
+  "mcpServers": {
+    "linux-x11-sandbox": {
+      "command": "/path/to/linux-x11-sandbox/scripts/docker-mcp.sh"
+    }
+  }
+}
+```
+
+Or invoke directly through `docker exec`:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize",...}' | docker exec -i linux-x11-sandbox linux-x11-sandbox
+```
+
+### 3.2 One-off container
+
+```bash
+docker run -i --rm linux-x11-sandbox
+```
+
+Then send MCP JSON-RPC over stdin.
 
 ---
 

@@ -138,10 +138,17 @@ MCP 配置大多数智能体使用 `mcpServers`。Claude Desktop 示例：
 | `lxs_input_click` | 在 `(x, y)` 点击 |
 | `lxs_input_move` | 移动光标 |
 | `lxs_input_scroll` | 滚动 |
+| `lxs_input_drag` | 从 `(x1, y1)` 拖动到 `(x2, y2)` |
 | `lxs_input_type` | 输入文本 |
 | `lxs_input_key` | 按键或组合键 |
 | `lxs_capture_screenshot` | 全屏截图 |
 | `lxs_capture_region` | 区域截图 |
+| `lxs_window_focus` | 聚焦当前激活窗口 |
+| `lxs_window_raise` | 将当前激活窗口置顶 |
+| `lxs_window_resize` | 调整当前激活窗口大小 |
+| `lxs_window_move` | 移动当前激活窗口 |
+| `lxs_clipboard_get` | 获取剪贴板文本 |
+| `lxs_clipboard_set` | 设置剪贴板文本 |
 | `lxs_state_window` | 当前激活窗口标题 |
 | `lxs_state_tree` | AT-SPI 无障碍树 |
 | `lxs_state_element_bounds` | 元素边界 |
@@ -215,12 +222,47 @@ Docker / e2b / Daytona / VM
     └── 目标应用
 ```
 
-宿主机只需：
-
-1. 在沙盒镜像里提供 `xvfb`、`openbox` 和构建好的二进制文件。
-2. 把 MCP stdio 服务器暴露给智能体。
-
 这样文件系统/网络隔离仍由外层沙盒负责，而智能体获得一个可交互的真实 GUI 环境。
+
+### 3.1 Docker
+
+构建镜像：
+
+```bash
+docker build -t linux-x11-sandbox .
+```
+
+启动持久化容器：
+
+```bash
+docker compose up -d
+```
+
+在智能体 MCP 配置中使用自带的桥接脚本作为服务器命令：
+
+```json
+{
+  "mcpServers": {
+    "linux-x11-sandbox": {
+      "command": "/path/to/linux-x11-sandbox/scripts/docker-mcp.sh"
+    }
+  }
+}
+```
+
+或者通过 `docker exec` 直接调用：
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize",...}' | docker exec -i linux-x11-sandbox linux-x11-sandbox
+```
+
+### 3.2 一次性容器
+
+```bash
+docker run -i --rm linux-x11-sandbox
+```
+
+然后通过标准输入发送 MCP JSON-RPC。
 
 ---
 
