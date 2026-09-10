@@ -1,4 +1,4 @@
-"""CLI entry point: linux-x11-sandbox [mcp|setup]."""
+"""CLI entry point: linux-x11-sandbox [mcp|serve|status|stop|setup]."""
 
 import argparse
 import subprocess
@@ -15,7 +15,10 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("mcp", help="Run the MCP stdio server (default)")
+    sub.add_parser("mcp", help="Run the MCP stdio proxy (default)")
+    sub.add_parser("serve", help="Start the daemon")
+    sub.add_parser("status", help="Check daemon status")
+    sub.add_parser("stop", help="Stop the daemon")
     sub.add_parser("setup", help="Register skill and MCP server with detected agents")
 
     args = parser.parse_args()
@@ -31,7 +34,10 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        subprocess.run([str(binary)], stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+        cmd = [str(binary)]
+        if args.command:
+            cmd.append(args.command)
+        subprocess.run(cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
 
 
 if __name__ == "__main__":
