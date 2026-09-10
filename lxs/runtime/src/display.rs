@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use lxs_core::{DisplayInfo, Driver, LxsError};
 use lxs_driver::NativeDriver;
@@ -58,8 +57,6 @@ impl Display {
             Backend::Xephyr => XephyrBackend::start(&display, config.width, config.height).await?,
         };
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
         let wm = OpenboxWM::start(&display).await?;
         let driver = Arc::new(NativeDriver::new(&display)?);
 
@@ -104,10 +101,6 @@ impl Display {
             apps.remove(pos)
         };
         proc.kill().await
-    }
-
-    pub fn list_apps(&self) -> Vec<u32> {
-        self.apps.lock().unwrap().iter().map(|p| p.pid()).collect()
     }
 
     pub fn info(&self) -> DisplayInfo {

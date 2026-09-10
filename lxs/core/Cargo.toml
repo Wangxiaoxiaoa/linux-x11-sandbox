@@ -8,3 +8,4 @@ license.workspace = true
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
+x11rb = { workspace = true }
