@@ -25,7 +25,7 @@ Typical uses:
 - Run end-to-end tests that need real screen, input, and window focus.
 - Capture screenshots or accessibility trees for verification.
 
-It can be used as an **MCP server**, a **Rust SDK**, or a **composable sandbox layer** inside Docker/VMs. All X11 protocol access uses [`x11rb`](https://github.com/psychon/x11rb); there is no Xlib linkage.
+It can be used as an **MCP server**, a **Rust SDK**, or a **composable sandbox layer** inside Docker/VMs.
 
 ## Architecture
 

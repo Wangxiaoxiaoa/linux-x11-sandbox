@@ -25,7 +25,7 @@
 - 运行需要真实屏幕、输入和窗口焦点的端到端测试。
 - 采集截图或无障碍树用于验证。
 
-可作为 **MCP 服务器**、**Rust SDK** 或 **可组合沙盒层**（Docker/VM 内）使用。所有 X11 协议访问均通过 [`x11rb`](https://github.com/psychon/x11rb)；不链接 Xlib。
+可作为 **MCP 服务器**、**Rust SDK** 或 **可组合沙盒层**（Docker/VM 内）使用。
 
 ## 架构
 
