@@ -21,7 +21,10 @@ fn help_flag_returns_zero() {
             output.status.code()
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("serve|mcp|stop|status"), "help text missing: {stdout}");
+        assert!(
+            stdout.contains("serve|mcp|stop|status"),
+            "help text missing: {stdout}"
+        );
     }
 }
 
@@ -31,10 +34,7 @@ fn unknown_command_returns_non_zero() {
         .arg("not-a-command")
         .output()
         .expect("spawn binary");
-    assert!(
-        !output.status.success(),
-        "unknown command should fail"
-    );
+    assert!(!output.status.success(), "unknown command should fail");
 }
 
 #[test]
@@ -48,5 +48,8 @@ fn status_reports_stopped_for_unused_socket() {
         "status should fail when daemon not running"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("stopped"), "expected 'stopped', got: {stdout}");
+    assert!(
+        stdout.contains("stopped"),
+        "expected 'stopped', got: {stdout}"
+    );
 }

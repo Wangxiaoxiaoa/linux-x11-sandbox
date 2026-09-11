@@ -1,10 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::tools::{
+    parse_args, tool_definitions as tools_tool_definitions, AppLaunchArgs, AppTerminateArgs,
+    ClickArgs, ClickElementArgs, ClipboardSetArgs, DisplayCreateArgs, DisplayIdArgs, DragArgs,
+    GetWindowStateArgs, KeyArgs, MoveArgs, ScrollArgs, SetValueArgs, SetWindowFrameArgs, TypeArgs,
+    WaitArgs, WindowIdArgs,
+};
 use lxh_core::{Driver, LxhError, MouseButton};
 use lxh_driver::DefaultDriver;
 use lxh_runtime::{Backend, Display, DisplayConfig, Runtime};
-use crate::tools::{tool_definitions as tools_tool_definitions, parse_args, AppLaunchArgs, AppTerminateArgs, ClickArgs, ClickElementArgs, ClipboardSetArgs, DisplayCreateArgs, DisplayIdArgs, DragArgs, GetWindowStateArgs, KeyArgs, MoveArgs, ScrollArgs, SetValueArgs, SetWindowFrameArgs, TypeArgs, WaitArgs, WindowIdArgs};
 use serde_json::{json, Value};
 use tokio::sync::{Mutex, RwLock};
 
@@ -39,7 +44,6 @@ fn parse_button(b: Option<crate::tools::ButtonArg>) -> Result<MouseButton, LxhEr
         crate::tools::ButtonArg::Middle => Ok(MouseButton::Middle),
     }
 }
-
 
 pub async fn create_display(
     state: &DaemonState,
@@ -125,7 +129,11 @@ pub async fn app_launch(state: &DaemonState, args: &Value) -> Result<Value, LxhE
     let args: AppLaunchArgs = parse_args(args)?;
     let arg_refs: Vec<&str> = args.args.iter().map(|s| s.as_str()).collect();
     let display = find_display(state, &args.display_id).await?;
-    let pid = display.lock().await.launch_app(&args.command, &arg_refs).await?;
+    let pid = display
+        .lock()
+        .await
+        .launch_app(&args.command, &arg_refs)
+        .await?;
     Ok(json!({ "pid": pid }))
 }
 
@@ -140,7 +148,12 @@ pub async fn click(state: &DaemonState, args: &Value) -> Result<Value, LxhError>
     let args: ClickArgs = parse_args(args)?;
     let driver = find_driver(state, &args.display_id).await?;
     driver
-        .click(args.x as i32, args.y as i32, parse_button(args.button)?, args.count.unwrap_or(1) as u32)
+        .click(
+            args.x as i32,
+            args.y as i32,
+            parse_button(args.button)?,
+            args.count.unwrap_or(1) as u32,
+        )
         .await?;
     Ok(json!({ "success": true }))
 }
@@ -177,7 +190,14 @@ pub async fn scroll(state: &DaemonState, args: &Value) -> Result<Value, LxhError
 pub async fn drag(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
     let args: DragArgs = parse_args(args)?;
     let driver = find_driver(state, &args.display_id).await?;
-    driver.drag(args.x1 as i32, args.y1 as i32, args.x2 as i32, args.y2 as i32).await?;
+    driver
+        .drag(
+            args.x1 as i32,
+            args.y1 as i32,
+            args.x2 as i32,
+            args.y2 as i32,
+        )
+        .await?;
     Ok(json!({ "success": true }))
 }
 
@@ -235,7 +255,11 @@ pub async fn click_element(state: &DaemonState, args: &Value) -> Result<Value, L
     let args: ClickElementArgs = parse_args(args)?;
     let driver = find_driver(state, &args.display_id).await?;
     driver
-        .click_element(args.pid as u32, args.index as usize, parse_button(args.button)?)
+        .click_element(
+            args.pid as u32,
+            args.index as usize,
+            parse_button(args.button)?,
+        )
         .await?;
     Ok(json!({ "success": true }))
 }
@@ -276,7 +300,12 @@ pub async fn get_window_state(state: &DaemonState, args: &Value) -> Result<Value
     let args: GetWindowStateArgs = parse_args(args)?;
     let driver = find_driver(state, &args.display_id).await?;
     let state = driver
-        .get_window_state(args.pid as u32, args.window_id as u32, args.include_tree, args.include_screenshot)
+        .get_window_state(
+            args.pid as u32,
+            args.window_id as u32,
+            args.include_tree,
+            args.include_screenshot,
+        )
         .await?;
 
     let mut result = json!({
@@ -354,7 +383,9 @@ pub async fn get_desktop_overview(state: &DaemonState, args: &Value) -> Result<V
 pub async fn set_value(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
     let args: SetValueArgs = parse_args(args)?;
     let driver = find_driver(state, &args.display_id).await?;
-    driver.set_value(args.pid as u32, args.index as usize, &args.value).await?;
+    driver
+        .set_value(args.pid as u32, args.index as usize, &args.value)
+        .await?;
     Ok(json!({ "success": true }))
 }
 

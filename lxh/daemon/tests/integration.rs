@@ -246,7 +246,10 @@ async fn app_terminate_kills_process() {
         .success());
 
     let term = conn
-        .call_tool("lxh_app_terminate", json!({"display_id": display_id, "pid": pid}))
+        .call_tool(
+            "lxh_app_terminate",
+            json!({"display_id": display_id, "pid": pid}),
+        )
         .await;
     assert!(term["result"]["success"].as_bool().unwrap());
 
@@ -271,14 +274,20 @@ async fn input_move_and_get_cursor_position() {
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
     let move_resp = conn
-        .call_tool("lxh_input_move", json!({"display_id": display_id, "x": 123, "y": 456}))
+        .call_tool(
+            "lxh_input_move",
+            json!({"display_id": display_id, "x": 123, "y": 456}),
+        )
         .await;
     assert!(move_resp["result"]["success"].as_bool().unwrap());
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let pos = conn
-        .call_tool("lxh_input_get_cursor_position", json!({"display_id": display_id}))
+        .call_tool(
+            "lxh_input_get_cursor_position",
+            json!({"display_id": display_id}),
+        )
         .await;
     assert_eq!(pos["result"]["x"].as_i64(), Some(123));
     assert_eq!(pos["result"]["y"].as_i64(), Some(456));
@@ -316,7 +325,10 @@ async fn invalid_display_id_returns_error() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
     let resp = conn
-        .call_tool("lxh_capture_screenshot", json!({"display_id": "d-doesnotexist"}))
+        .call_tool(
+            "lxh_capture_screenshot",
+            json!({"display_id": "d-doesnotexist"}),
+        )
         .await;
     assert!(resp["error"].is_object(), "expected error response: {resp}");
     assert!(resp["error"]["message"]
@@ -406,12 +418,146 @@ async fn desktop_overview_lists_launched_app() {
     tokio::time::sleep(Duration::from_millis(800)).await;
 
     let overview = conn
-        .call_tool("lxh_get_desktop_overview", json!({"display_id": display_id}))
+        .call_tool(
+            "lxh_get_desktop_overview",
+            json!({"display_id": display_id}),
+        )
         .await;
     let processes = overview["result"]["processes"].as_array().unwrap();
     assert!(
         processes.iter().any(|p| p["pid"].as_u64() == Some(pid)),
         "launched process not in overview: {overview}"
+    );
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+use x11rb::connection::Connection as X11Connection;
+use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, MapState, QueryTreeReply, Window};
+use x11rb::rust_connection::RustConnection;
+
+fn find_xterm_window(display: &str) -> Option<u64> {
+    let (conn, screen_num) = RustConnection::connect(Some(display)).ok()?;
+    let root = conn.setup().roots[screen_num].root;
+    find_window_recursive(&conn, root)
+}
+
+fn find_window_recursive(conn: &RustConnection, window: Window) -> Option<u64> {
+    let reply: QueryTreeReply = conn.query_tree(window).ok()?.reply().ok()?;
+    for &child in &reply.children {
+        let attrs = match conn.get_window_attributes(child) {
+            Ok(c) => c.reply().ok()?,
+            Err(_) => continue,
+        };
+        if attrs.map_state != MapState::VIEWABLE {
+            continue;
+        }
+        let name =
+            match conn.get_property(false, child, AtomEnum::WM_NAME, AtomEnum::STRING, 0, 1024) {
+                Ok(c) => c.reply().ok()?,
+                Err(_) => continue,
+            };
+        let s = String::from_utf8_lossy(&name.value);
+        if s.contains("lxh-window-test") {
+            return Some(child as u64);
+        }
+        if let Some(id) = find_window_recursive(conn, child) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+fn window_size(display: &str, window_id: u64) -> Option<(u64, u64)> {
+    let (conn, _) = RustConnection::connect(Some(display)).ok()?;
+    let geom = conn.get_geometry(window_id as u32).ok()?.reply().ok()?;
+    Some((geom.width as u64, geom.height as u64))
+}
+
+#[tokio::test]
+async fn window_lifecycle_focus_set_frame_close() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+    let display = create["result"]["display"].as_str().unwrap().to_string();
+
+    let _ = conn
+        .call_tool(
+            "lxh_app_launch",
+            json!({
+                "display_id": display_id,
+                "command": "xterm",
+                "args": ["-title", "lxh-window-test", "-e", "sleep", "60"]
+            }),
+        )
+        .await;
+
+    let mut window_id = None;
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        window_id = find_xterm_window(&display);
+        if window_id.is_some() {
+            break;
+        }
+    }
+    let window_id = window_id.expect("xterm window not found");
+
+    let focus = conn
+        .call_tool(
+            "lxh_window_focus",
+            json!({"display_id": display_id, "window_id": window_id}),
+        )
+        .await;
+    assert!(focus["result"]["success"].as_bool().unwrap());
+
+    let set_frame = conn
+        .call_tool(
+            "lxh_window_set_frame",
+            json!({
+                "display_id": display_id,
+                "window_id": window_id,
+                "x": 10,
+                "y": 20,
+                "width": 500,
+                "height": 400
+            }),
+        )
+        .await;
+    assert!(set_frame["result"]["success"].as_bool().unwrap());
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let (w, h) = tokio::task::spawn_blocking({
+        let display = display.clone();
+        move || window_size(&display, window_id).expect("window size")
+    })
+    .await
+    .unwrap();
+    assert!(w > 400, "width not resized: {w}");
+    assert!(h > 350, "height not resized: {h}");
+
+    let capture = conn
+        .call_tool(
+            "lxh_capture_window",
+            json!({"display_id": display_id, "window_id": window_id}),
+        )
+        .await;
+    assert!(!capture["result"]["data"].as_str().unwrap().is_empty());
+
+    let close = conn
+        .call_tool(
+            "lxh_window_close",
+            json!({"display_id": display_id, "window_id": window_id}),
+        )
+        .await;
+    assert!(close["result"]["success"].as_bool().unwrap());
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        find_xterm_window(&display).is_none(),
+        "window should be closed"
     );
 
     conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))

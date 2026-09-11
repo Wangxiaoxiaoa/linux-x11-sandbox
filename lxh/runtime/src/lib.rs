@@ -10,6 +10,13 @@ pub mod xserver;
 
 pub use display::{Backend, Display, DisplayConfig, DisplayKind};
 
+fn process_scoped_display_start() -> u32 {
+    // Use the process id so that concurrent daemon instances do not collide
+    // on the low display numbers starting at :99.
+    let pid = std::process::id();
+    100 + (pid % 90_000)
+}
+
 pub struct Runtime {
     next_display: AtomicU32,
 }
@@ -17,7 +24,7 @@ pub struct Runtime {
 impl Runtime {
     pub fn new() -> Self {
         Self {
-            next_display: AtomicU32::new(99),
+            next_display: AtomicU32::new(process_scoped_display_start()),
         }
     }
 

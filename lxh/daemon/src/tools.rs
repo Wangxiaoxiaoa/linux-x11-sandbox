@@ -312,10 +312,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 26, "expected 26 tool definitions");
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"lxh_display_create"));
         assert!(names.contains(&"lxh_input_click"));
         assert!(names.contains(&"lxh_capture_screenshot"));
@@ -326,10 +323,7 @@ mod tests {
     #[test]
     fn tool_definitions_have_schema() {
         for def in tool_definitions() {
-            assert!(
-                def["name"].is_string(),
-                "tool name missing: {def}"
-            );
+            assert!(def["name"].is_string(), "tool name missing: {def}");
             assert!(
                 def["description"].is_string(),
                 "tool description missing: {def}"

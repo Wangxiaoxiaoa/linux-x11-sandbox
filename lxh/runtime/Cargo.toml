@@ -8,3 +8,4 @@ license.workspace = true
 lxh-core = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
+x11rb = { workspace = true }
