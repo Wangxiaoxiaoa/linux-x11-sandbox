@@ -47,6 +47,11 @@ async fn main() {
     let socket_path = resolve_socket_path(&mut args);
     let command = args.get(1).map(|s| s.as_str()).unwrap_or("mcp");
 
+    if command == "--help" || command == "-h" {
+        println!("Usage: linux-x11-harness [serve|mcp|stop|status] [--socket PATH]");
+        return;
+    }
+
     match command {
         "serve" => run_serve(socket_path).await,
         "mcp" => run_mcp(socket_path).await,
