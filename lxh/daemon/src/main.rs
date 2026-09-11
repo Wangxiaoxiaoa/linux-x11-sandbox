@@ -1,12 +1,28 @@
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use lxh_daemon::server::DaemonServer;
 use lxh_runtime::Runtime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-fn socket_path() -> PathBuf {
+fn resolve_socket_path(args: &mut Vec<String>) -> PathBuf {
+    let mut idx = None;
+    for (i, arg) in args.iter().enumerate() {
+        if arg == "--socket" {
+            idx = Some(i);
+            break;
+        }
+    }
+
+    if let Some(i) = idx {
+        if i + 1 < args.len() {
+            let path = args.remove(i + 1);
+            args.remove(i);
+            return PathBuf::from(path);
+        }
+    }
+
     env::var("LXH_SOCKET_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -17,37 +33,33 @@ fn socket_path() -> PathBuf {
         })
 }
 
-fn pid_path() -> PathBuf {
-    env::var("LXH_PID_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let mut p = socket_path();
-            p.set_extension("pid");
-            p
-        })
+fn pid_path(socket_path: &Path) -> PathBuf {
+    let mut p = socket_path.to_path_buf();
+    p.set_extension("pid");
+    p
 }
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = env::args().collect();
+    let mut args: Vec<String> = env::args().collect();
+    let socket_path = resolve_socket_path(&mut args);
     let command = args.get(1).map(|s| s.as_str()).unwrap_or("mcp");
 
     match command {
-        "serve" => run_serve().await,
-        "mcp" => run_mcp().await,
-        "stop" => run_stop().await,
-        "status" => run_status().await,
+        "serve" => run_serve(socket_path).await,
+        "mcp" => run_mcp(socket_path).await,
+        "stop" => run_stop(socket_path).await,
+        "status" => run_status(socket_path).await,
         _ => {
-            eprintln!("Usage: linux-x11-harness [serve|mcp|stop|status]");
+            eprintln!("Usage: linux-x11-harness [serve|mcp|stop|status] [--socket PATH]");
             std::process::exit(1);
         }
     }
 }
 
-async fn run_serve() {
-    let socket_path = socket_path();
+async fn run_serve(socket_path: PathBuf) {
     let pid = std::process::id();
-    let _ = tokio::fs::write(pid_path(), pid.to_string()).await;
+    let _ = tokio::fs::write(pid_path(&socket_path), pid.to_string()).await;
 
     let runtime = Arc::new(Runtime::new());
     let server = DaemonServer::new(runtime, socket_path);
@@ -57,8 +69,8 @@ async fn run_serve() {
     }
 }
 
-async fn run_stop() {
-    let pid_path = pid_path();
+async fn run_stop(socket_path: PathBuf) {
+    let pid_path = pid_path(&socket_path);
     let pid: u32 = match tokio::fs::read_to_string(&pid_path).await {
         Ok(s) => s.trim().parse().unwrap_or(0),
         Err(_) => {
@@ -74,27 +86,24 @@ async fn run_stop() {
         libc::kill(pid as i32, libc::SIGTERM);
     }
     let _ = tokio::fs::remove_file(&pid_path).await;
-    let socket_path = socket_path();
     let _ = tokio::fs::remove_file(&socket_path).await;
     println!("stopped daemon {pid}");
 }
 
-async fn run_status() {
-    if !socket_path().exists() {
+async fn run_status(socket_path: PathBuf) {
+    if !socket_path.exists() {
         println!("stopped");
         std::process::exit(1);
     }
     println!("running");
 }
 
-async fn run_mcp() {
-    let socket_path = socket_path();
+async fn run_mcp(socket_path: PathBuf) {
     if !socket_path.exists() {
         let executable = env::current_exe().expect("current exe");
-        let mut child = tokio::process::Command::new(executable)
-            .arg("serve")
-            .spawn()
-            .expect("spawn daemon");
+        let mut cmd = tokio::process::Command::new(executable);
+        cmd.arg("serve").arg("--socket").arg(&socket_path);
+        let mut child = cmd.spawn().expect("spawn daemon");
 
         for _ in 0..50 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
