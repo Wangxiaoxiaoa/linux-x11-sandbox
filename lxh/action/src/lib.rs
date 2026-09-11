@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use lxh_core::{x11, InputBackend, LxhError, MouseButton};
+use lxh_core::{x11, InputDriver, LxhError, MouseButton};
 use std::{thread, time::Duration};
 use tokio::task;
 use x11rb::connection::Connection;
@@ -106,7 +106,7 @@ fn client_window(conn: &RustConnection, window: u32) -> u32 {
 }
 
 #[async_trait]
-impl InputBackend for XtestInput {
+impl InputDriver for XtestInput {
     async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxhError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
@@ -338,7 +338,7 @@ impl X11WindowManager {
 }
 
 #[async_trait]
-impl lxh_core::WindowBackend for X11WindowManager {
+impl lxh_core::WindowDriver for X11WindowManager {
     async fn focus_window(&self, window_id: u32) -> Result<(), LxhError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
@@ -454,7 +454,7 @@ impl ArboardClipboard {
 }
 
 #[async_trait]
-impl lxh_core::ClipboardBackend for ArboardClipboard {
+impl lxh_core::ClipboardDriver for ArboardClipboard {
     async fn clipboard_get(&self) -> Result<String, LxhError> {
         task::spawn_blocking(|| {
             let mut clipboard =

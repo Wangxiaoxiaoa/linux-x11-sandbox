@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use lxh_core::{Driver, LxhError, MouseButton};
+use lxh_driver::DefaultDriver;
 use lxh_runtime::{Backend, Display, DisplayConfig, Runtime};
 use serde_json::{json, Value};
 use tokio::sync::{Mutex, RwLock};
@@ -9,6 +10,7 @@ use tokio::sync::{Mutex, RwLock};
 pub struct DaemonState {
     pub runtime: Arc<Runtime>,
     pub displays: Arc<RwLock<HashMap<String, Arc<Mutex<Display>>>>>,
+    pub drivers: Arc<RwLock<HashMap<String, Arc<dyn Driver>>>>,
 }
 
 pub struct ClientSession {
@@ -62,11 +64,14 @@ pub async fn create_display(
     let display = state.runtime.create_display(config).await?;
     let id = display.id().to_string();
     let display_str = display.display().to_string();
+    let driver = Arc::new(DefaultDriver::new(&display_str)?);
+
     state
         .displays
         .write()
         .await
         .insert(id.clone(), Arc::new(Mutex::new(display)));
+    state.drivers.write().await.insert(id.clone(), driver);
     if !args["persistent"].as_bool().unwrap_or(false) {
         session.owned_displays.insert(id.clone());
     }
@@ -83,11 +88,14 @@ pub async fn attach_display(state: &DaemonState, args: &Value) -> Result<Value, 
     let display = state.runtime.attach_display(display_id).await?;
     let id = display.id().to_string();
     let display_str = display.display().to_string();
+    let driver = Arc::new(DefaultDriver::new(&display_str)?);
+
     state
         .displays
         .write()
         .await
         .insert(id.clone(), Arc::new(Mutex::new(display)));
+    state.drivers.write().await.insert(id.clone(), driver);
 
     Ok(json!({
         "display_id": id,
@@ -106,6 +114,7 @@ pub async fn destroy_display(
     display.lock().await.destroy().await?;
 
     state.displays.write().await.remove(id);
+    state.drivers.write().await.remove(id);
     session.owned_displays.remove(id);
 
     Ok(json!({ "success": true }))
@@ -587,9 +596,13 @@ async fn find_display(state: &DaemonState, id: &str) -> Result<Arc<Mutex<Display
 }
 
 async fn find_driver(state: &DaemonState, id: &str) -> Result<Arc<dyn Driver>, LxhError> {
-    let display = find_display(state, id).await?;
-    let driver = display.lock().await.driver();
-    Ok(driver)
+    state
+        .drivers
+        .read()
+        .await
+        .get(id)
+        .cloned()
+        .ok_or_else(|| LxhError::DisplayNotFound(id.into()))
 }
 
 fn encode_png(data: &[u8]) -> String {

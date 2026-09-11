@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use lxh_action::{ArboardClipboard, X11WindowManager, XtestInput};
 use lxh_core::{
-    A11yBackend, Bounds, CaptureBackend, ClipboardBackend, DesktopOverview, Driver,
-    GetWindowStateResult, InputBackend, LxhError, MouseButton, Screenshot, WindowBackend,
+    A11yDriver, Bounds, CaptureDriver, ClipboardDriver, DesktopOverview, Driver,
+    GetWindowStateResult, InputDriver, LxhError, MouseButton, Screenshot, WindowDriver,
 };
 use lxh_state::{AtspiA11y, X11Capture};
 
-pub struct NativeDriver {
+pub struct DefaultDriver {
     input: XtestInput,
     capture: X11Capture,
     a11y: AtspiA11y,
@@ -14,7 +14,7 @@ pub struct NativeDriver {
     clipboard: ArboardClipboard,
 }
 
-impl NativeDriver {
+impl DefaultDriver {
     pub fn new(display: &str) -> Result<Self, LxhError> {
         Ok(Self {
             input: XtestInput::new(display)?,
@@ -27,7 +27,7 @@ impl NativeDriver {
 }
 
 #[async_trait]
-impl Driver for NativeDriver {
+impl InputDriver for DefaultDriver {
     async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxhError> {
         self.input.click(x, y, button, count).await
     }
@@ -52,6 +52,13 @@ impl Driver for NativeDriver {
         self.input.key(key, modifiers).await
     }
 
+    async fn get_cursor_position(&self) -> Result<(i32, i32), LxhError> {
+        self.input.get_cursor_position().await
+    }
+}
+
+#[async_trait]
+impl CaptureDriver for DefaultDriver {
     async fn screenshot(&self) -> Result<Screenshot, LxhError> {
         self.capture.screenshot().await
     }
@@ -59,7 +66,10 @@ impl Driver for NativeDriver {
     async fn screenshot_window(&self, window_id: u32) -> Result<Screenshot, LxhError> {
         self.capture.screenshot_window(window_id).await
     }
+}
 
+#[async_trait]
+impl WindowDriver for DefaultDriver {
     async fn focus_window(&self, window_id: u32) -> Result<(), LxhError> {
         self.window.focus_window(window_id).await
     }
@@ -80,7 +90,10 @@ impl Driver for NativeDriver {
     async fn close_window(&self, window_id: u32) -> Result<(), LxhError> {
         self.window.close_window(window_id).await
     }
+}
 
+#[async_trait]
+impl ClipboardDriver for DefaultDriver {
     async fn clipboard_get(&self) -> Result<String, LxhError> {
         self.clipboard.clipboard_get().await
     }
@@ -88,11 +101,10 @@ impl Driver for NativeDriver {
     async fn clipboard_set(&self, text: &str) -> Result<(), LxhError> {
         self.clipboard.clipboard_set(text).await
     }
+}
 
-    async fn get_cursor_position(&self) -> Result<(i32, i32), LxhError> {
-        self.input.get_cursor_position().await
-    }
-
+#[async_trait]
+impl A11yDriver for DefaultDriver {
     async fn get_window_state(
         &self,
         pid: u32,
@@ -113,6 +125,13 @@ impl Driver for NativeDriver {
         self.a11y.set_value(pid, index, value).await
     }
 
+    async fn element_frame(&self, pid: u32, index: usize) -> Result<Bounds, LxhError> {
+        self.a11y.element_frame(pid, index).await
+    }
+}
+
+#[async_trait]
+impl Driver for DefaultDriver {
     async fn click_element(
         &self,
         pid: u32,

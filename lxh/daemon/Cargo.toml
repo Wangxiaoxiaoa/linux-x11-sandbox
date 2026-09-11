@@ -16,6 +16,7 @@ libc = "0.2"
 
 [dependencies]
 lxh-core = { workspace = true }
+lxh-driver = { workspace = true }
 lxh-runtime = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

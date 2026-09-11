@@ -101,7 +101,7 @@ pub struct Bounds {
 }
 
 #[async_trait]
-pub trait InputBackend: Send + Sync {
+pub trait InputDriver: Send + Sync {
     async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxhError>;
     async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxhError>;
     async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxhError>;
@@ -112,13 +112,13 @@ pub trait InputBackend: Send + Sync {
 }
 
 #[async_trait]
-pub trait CaptureBackend: Send + Sync {
+pub trait CaptureDriver: Send + Sync {
     async fn screenshot(&self) -> Result<Screenshot, LxhError>;
     async fn screenshot_window(&self, window_id: u32) -> Result<Screenshot, LxhError>;
 }
 
 #[async_trait]
-pub trait WindowBackend: Send + Sync {
+pub trait WindowDriver: Send + Sync {
     async fn focus_window(&self, window_id: u32) -> Result<(), LxhError>;
     async fn set_window_frame(
         &self,
@@ -132,13 +132,13 @@ pub trait WindowBackend: Send + Sync {
 }
 
 #[async_trait]
-pub trait ClipboardBackend: Send + Sync {
+pub trait ClipboardDriver: Send + Sync {
     async fn clipboard_get(&self) -> Result<String, LxhError>;
     async fn clipboard_set(&self, text: &str) -> Result<(), LxhError>;
 }
 
 #[async_trait]
-pub trait A11yBackend: Send + Sync {
+pub trait A11yDriver: Send + Sync {
     async fn get_window_state(
         &self,
         pid: u32,
@@ -152,42 +152,9 @@ pub trait A11yBackend: Send + Sync {
 }
 
 #[async_trait]
-pub trait Driver: Send + Sync {
-    async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxhError>;
-    async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxhError>;
-    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxhError>;
-    async fn drag(&self, x1: i32, y1: i32, x2: i32, y2: i32) -> Result<(), LxhError>;
-    async fn type_text(&self, text: &str) -> Result<(), LxhError>;
-    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxhError>;
-
-    async fn screenshot(&self) -> Result<Screenshot, LxhError>;
-    async fn screenshot_window(&self, window_id: u32) -> Result<Screenshot, LxhError>;
-
-    async fn focus_window(&self, window_id: u32) -> Result<(), LxhError>;
-    async fn set_window_frame(
-        &self,
-        window_id: u32,
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
-    ) -> Result<(), LxhError>;
-    async fn close_window(&self, window_id: u32) -> Result<(), LxhError>;
-
-    async fn clipboard_get(&self) -> Result<String, LxhError>;
-    async fn clipboard_set(&self, text: &str) -> Result<(), LxhError>;
-
-    async fn get_cursor_position(&self) -> Result<(i32, i32), LxhError>;
-
-    async fn get_window_state(
-        &self,
-        pid: u32,
-        window_id: u32,
-        include_tree: bool,
-        include_screenshot: bool,
-    ) -> Result<GetWindowStateResult, LxhError>;
-    async fn get_desktop_overview(&self) -> Result<DesktopOverview, LxhError>;
-    async fn set_value(&self, pid: u32, index: usize, value: &str) -> Result<(), LxhError>;
+pub trait Driver:
+    InputDriver + CaptureDriver + WindowDriver + ClipboardDriver + A11yDriver
+{
     async fn click_element(
         &self,
         pid: u32,

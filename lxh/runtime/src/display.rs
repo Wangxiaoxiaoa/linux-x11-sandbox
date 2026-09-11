@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use lxh_core::{DisplayInfo, Driver, LxhError};
-use lxh_driver::NativeDriver;
+use lxh_core::{DisplayInfo, LxhError};
 
 use crate::process::ManagedProcess;
 use crate::wm::OpenboxWM;
@@ -48,7 +45,6 @@ pub struct Display {
     xserver: Option<ManagedProcess>,
     wm: Option<ManagedProcess>,
     apps: std::sync::Mutex<Vec<ManagedProcess>>,
-    driver: Arc<dyn Driver>,
 }
 
 impl Display {
@@ -65,7 +61,6 @@ impl Display {
         };
 
         let wm = OpenboxWM::start(&display).await?;
-        let driver = Arc::new(NativeDriver::new(&display)?);
 
         Ok(Self {
             id,
@@ -76,12 +71,10 @@ impl Display {
             xserver: Some(xserver),
             wm: Some(wm),
             apps: std::sync::Mutex::new(Vec::new()),
-            driver,
         })
     }
 
     pub async fn attach(id: String, display: String) -> Result<Self, LxhError> {
-        let driver = Arc::new(NativeDriver::new(&display)?);
         Ok(Self {
             id,
             display: display.clone(),
@@ -91,7 +84,6 @@ impl Display {
             xserver: None,
             wm: None,
             apps: std::sync::Mutex::new(Vec::new()),
-            driver,
         })
     }
 
@@ -109,10 +101,6 @@ impl Display {
 
     pub fn is_external(&self) -> bool {
         matches!(self.kind, DisplayKind::External)
-    }
-
-    pub fn driver(&self) -> Arc<dyn Driver> {
-        self.driver.clone()
     }
 
     pub async fn launch_app(&self, command: &str, args: &[&str]) -> Result<u32, LxhError> {
@@ -164,5 +152,4 @@ impl Display {
         }
         Ok(())
     }
-
 }

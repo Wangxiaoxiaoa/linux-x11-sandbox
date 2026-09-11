@@ -23,6 +23,7 @@ impl DaemonServer {
             state: Arc::new(DaemonState {
                 runtime,
                 displays: Arc::new(RwLock::new(HashMap::new())),
+                drivers: Arc::new(RwLock::new(HashMap::new())),
             }),
             socket_path,
         }

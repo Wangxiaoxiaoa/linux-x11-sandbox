@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use image::{ImageEncoder, RgbImage};
 use lxh_core::{
-    x11, A11yBackend, Bounds, CaptureBackend, DesktopOverview, GetWindowStateResult, LxhError,
+    x11, A11yDriver, Bounds, CaptureDriver, DesktopOverview, GetWindowStateResult, LxhError,
     ProcessEntry, Screenshot, WindowEntry,
 };
 use tokio::task;
@@ -25,7 +25,7 @@ impl X11Capture {
 }
 
 #[async_trait]
-impl CaptureBackend for X11Capture {
+impl CaptureDriver for X11Capture {
     async fn screenshot(&self) -> Result<Screenshot, LxhError> {
         let display = self.display.clone();
         task::spawn_blocking(move || {
@@ -121,7 +121,7 @@ impl AtspiA11y {
 }
 
 #[async_trait]
-impl A11yBackend for AtspiA11y {
+impl A11yDriver for AtspiA11y {
     async fn get_window_state(
         &self,
         pid: u32,
