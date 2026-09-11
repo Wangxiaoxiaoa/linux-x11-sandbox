@@ -438,12 +438,16 @@ use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, MapState, QueryTreeReply,
 use x11rb::rust_connection::RustConnection;
 
 fn find_xterm_window(display: &str) -> Option<u64> {
-    let (conn, screen_num) = RustConnection::connect(Some(display)).ok()?;
-    let root = conn.setup().roots[screen_num].root;
-    find_window_recursive(&conn, root)
+    find_window_by_title(display, "lxh-window-test")
 }
 
-fn find_window_recursive(conn: &RustConnection, window: Window) -> Option<u64> {
+fn find_window_by_title(display: &str, title: &str) -> Option<u64> {
+    let (conn, screen_num) = RustConnection::connect(Some(display)).ok()?;
+    let root = conn.setup().roots[screen_num].root;
+    find_window_recursive(&conn, root, title)
+}
+
+fn find_window_recursive(conn: &RustConnection, window: Window, title: &str) -> Option<u64> {
     let reply: QueryTreeReply = conn.query_tree(window).ok()?.reply().ok()?;
     for &child in &reply.children {
         let attrs = match conn.get_window_attributes(child) {
@@ -459,10 +463,10 @@ fn find_window_recursive(conn: &RustConnection, window: Window) -> Option<u64> {
                 Err(_) => continue,
             };
         let s = String::from_utf8_lossy(&name.value);
-        if s.contains("lxh-window-test") {
+        if s.contains(title) {
             return Some(child as u64);
         }
-        if let Some(id) = find_window_recursive(conn, child) {
+        if let Some(id) = find_window_recursive(conn, child, title) {
             return Some(id);
         }
     }
@@ -560,6 +564,192 @@ async fn window_lifecycle_focus_set_frame_close() {
         "window should be closed"
     );
 
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+#[tokio::test]
+async fn persistent_display_survives_client_disconnect() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn
+        .call_tool("lxh_display_create", json!({"persistent": true}))
+        .await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    // Drop the first connection.
+    drop(conn);
+
+    // Reconnect to the same daemon and verify the display is still there.
+    let mut conn2 = daemon.connect().await;
+    let info = conn2
+        .call_tool("lxh_display_info", json!({"display_id": display_id}))
+        .await;
+    assert!(info["result"]["display"].is_string());
+
+    conn2
+        .call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+fn python_path() -> PathBuf {
+    env::var("PYTHON")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("python3"))
+}
+
+fn atspi_test_app_path() -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests");
+    path.push("atspi_test_app.py");
+    path
+}
+
+#[tokio::test]
+async fn atspi_interaction_with_gtk_app() {
+    let python = python_path();
+    if !tokio::process::Command::new(&python)
+        .args([
+            "-c",
+            "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        eprintln!("skipping atspi test: python gi/Gtk3 not available");
+        return;
+    }
+
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+    let display = create["result"]["display"].as_str().unwrap().to_string();
+
+    let app_path = atspi_test_app_path();
+    let launch = conn
+        .call_tool(
+            "lxh_app_launch",
+            json!({
+                "display_id": display_id,
+                "command": python.to_string_lossy(),
+                "args": [app_path.to_string_lossy()]
+            }),
+        )
+        .await;
+    let pid = launch["result"]["pid"].as_u64().unwrap();
+
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+    // Find the window via x11rb (desktop overview title may be null).
+    let mut window_id = None;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        window_id = find_window_by_title(&display, "lxh-atspi-test");
+        if window_id.is_some() {
+            break;
+        }
+    }
+    let window_id = window_id.expect("gtk window not found");
+
+    // Read window state including accessibility tree.
+    let state = conn
+        .call_tool(
+            "lxh_get_window_state",
+            json!({
+                "display_id": display_id,
+                "pid": pid,
+                "window_id": window_id,
+                "include_tree": true
+            }),
+        )
+        .await;
+    let tree = state["result"]["tree"]["elements"].as_array().unwrap();
+    assert!(!tree.is_empty(), "accessibility tree should not be empty");
+
+    // Find the entry element and set its value.
+    let entry_index = tree
+        .iter()
+        .position(|e| {
+            e["role"].as_str() == Some("text")
+                || e["name"]
+                    .as_str()
+                    .map(|n| n.contains("test-entry"))
+                    .unwrap_or(false)
+        })
+        .expect("entry element not found in tree");
+    let set = conn
+        .call_tool(
+            "lxh_set_value",
+            json!({
+                "display_id": display_id,
+                "pid": pid,
+                "index": entry_index,
+                "value": "hello-atspi"
+            }),
+        )
+        .await;
+    assert!(set["result"]["success"].as_bool().unwrap());
+
+    // Find the button element and click it.
+    let button_index = tree
+        .iter()
+        .position(|e| {
+            e["role"].as_str() == Some("push button")
+                || e["name"]
+                    .as_str()
+                    .map(|n| n.contains("Click me"))
+                    .unwrap_or(false)
+        })
+        .expect("button element not found in tree");
+    let click = conn
+        .call_tool(
+            "lxh_click_element",
+            json!({
+                "display_id": display_id,
+                "pid": pid,
+                "index": button_index
+            }),
+        )
+        .await;
+    assert!(click["result"]["success"].as_bool().unwrap());
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Verify the label changed to "clicked".
+    let state2 = conn
+        .call_tool(
+            "lxh_get_window_state",
+            json!({
+                "display_id": display_id,
+                "pid": pid,
+                "window_id": window_id,
+                "include_tree": true
+            }),
+        )
+        .await;
+    let tree2 = state2["result"]["tree"]["elements"].as_array().unwrap();
+    let label_changed = tree2.iter().any(|e| {
+        e["name"]
+            .as_str()
+            .map(|n| n.contains("clicked"))
+            .unwrap_or(false)
+            || e["value"]
+                .as_str()
+                .map(|v| v.contains("clicked"))
+                .unwrap_or(false)
+    });
+    assert!(label_changed, "button click did not update label: {state2}");
+
+    conn.call_tool(
+        "lxh_app_terminate",
+        json!({"display_id": display_id, "pid": pid}),
+    )
+    .await;
     conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
         .await;
 }
