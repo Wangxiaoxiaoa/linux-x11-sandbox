@@ -219,3 +219,201 @@ async fn launch_app_and_take_screenshot() {
         .call_tool("lxh_display_destroy", json!({"display_id": display_id}))
         .await;
 }
+
+#[tokio::test]
+async fn app_terminate_kills_process() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    let launch = conn
+        .call_tool(
+            "lxh_app_launch",
+            json!({"display_id": display_id, "command": "sleep", "args": ["60"]}),
+        )
+        .await;
+    let pid = launch["result"]["pid"].as_u64().unwrap() as u32;
+    assert!(pid > 0);
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(tokio::process::Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .status()
+        .await
+        .unwrap()
+        .success());
+
+    let term = conn
+        .call_tool("lxh_app_terminate", json!({"display_id": display_id, "pid": pid}))
+        .await;
+    assert!(term["result"]["success"].as_bool().unwrap());
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!tokio::process::Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .status()
+        .await
+        .unwrap()
+        .success());
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+#[tokio::test]
+async fn input_move_and_get_cursor_position() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    let move_resp = conn
+        .call_tool("lxh_input_move", json!({"display_id": display_id, "x": 123, "y": 456}))
+        .await;
+    assert!(move_resp["result"]["success"].as_bool().unwrap());
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let pos = conn
+        .call_tool("lxh_input_get_cursor_position", json!({"display_id": display_id}))
+        .await;
+    assert_eq!(pos["result"]["x"].as_i64(), Some(123));
+    assert_eq!(pos["result"]["y"].as_i64(), Some(456));
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+#[tokio::test]
+async fn clipboard_roundtrip() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    let set = conn
+        .call_tool(
+            "lxh_clipboard_set",
+            json!({"display_id": display_id, "text": "hello harness"}),
+        )
+        .await;
+    assert!(set["result"]["success"].as_bool().unwrap());
+
+    let get = conn
+        .call_tool("lxh_clipboard_get", json!({"display_id": display_id}))
+        .await;
+    assert_eq!(get["result"]["text"].as_str(), Some("hello harness"));
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+#[tokio::test]
+async fn invalid_display_id_returns_error() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let resp = conn
+        .call_tool("lxh_capture_screenshot", json!({"display_id": "d-doesnotexist"}))
+        .await;
+    assert!(resp["error"].is_object(), "expected error response: {resp}");
+    assert!(resp["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
+}
+
+#[tokio::test]
+async fn invalid_tool_arguments_returns_error() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    let resp = conn
+        .call_tool("lxh_app_launch", json!({"display_id": display_id}))
+        .await;
+    assert!(resp["error"].is_object(), "expected error response: {resp}");
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+#[tokio::test]
+async fn display_info_returns_resolution() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    let info = conn
+        .call_tool("lxh_display_info", json!({"display_id": display_id}))
+        .await;
+    assert!(info["result"]["width"].as_u64().unwrap() > 0);
+    assert!(info["result"]["height"].as_u64().unwrap() > 0);
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+#[tokio::test]
+async fn xephyr_backend_when_available() {
+    if tokio::process::Command::new("which")
+        .arg("Xephyr")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .map(|s| !s.success())
+        .unwrap_or(true)
+    {
+        return;
+    }
+
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn
+        .call_tool("lxh_display_create", json!({"backend": "xephyr"}))
+        .await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    let info = conn
+        .call_tool("lxh_display_info", json!({"display_id": display_id}))
+        .await;
+    assert!(info["result"]["display"].is_string());
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
+
+#[tokio::test]
+async fn desktop_overview_lists_launched_app() {
+    let daemon = DaemonGuard::new().await;
+    let mut conn = daemon.connect().await;
+    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
+
+    let launch = conn
+        .call_tool(
+            "lxh_app_launch",
+            json!({"display_id": display_id, "command": "xterm", "args": ["-e", "sleep", "60"]}),
+        )
+        .await;
+    let pid = launch["result"]["pid"].as_u64().unwrap();
+
+    tokio::time::sleep(Duration::from_millis(800)).await;
+
+    let overview = conn
+        .call_tool("lxh_get_desktop_overview", json!({"display_id": display_id}))
+        .await;
+    let processes = overview["result"]["processes"].as_array().unwrap();
+    assert!(
+        processes.iter().any(|p| p["pid"].as_u64() == Some(pid)),
+        "launched process not in overview: {overview}"
+    );
+
+    conn.call_tool("lxh_display_destroy", json!({"display_id": display_id}))
+        .await;
+}
