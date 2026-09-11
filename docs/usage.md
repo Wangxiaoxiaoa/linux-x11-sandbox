@@ -21,7 +21,9 @@ The MCP server is a long-lived daemon plus a per-agent stdio proxy.
 
 ## Multiple isolated instances
 
-Each daemon owns one set of displays. To give a child agent its own isolated harness, run a dedicated daemon on a unique socket:
+By default, all agents share one daemon and each MCP connection gets its own session. Displays created by one session are cleaned up when that session disconnects.
+
+To run a fully separate daemon process, use a unique socket:
 
 ```bash
 ./target/release/linux-x11-harness serve --socket /tmp/lxh-agent-1.sock

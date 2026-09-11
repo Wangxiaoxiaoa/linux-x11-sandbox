@@ -33,15 +33,17 @@ cd ../../../
 ./target/release/linux-x11-harness mcp     # stdio proxy (auto-starts daemon)
 ```
 
-### Isolated instances for child agents
+### Isolated daemon instances
 
-When a parent agent spawns multiple child agents, give each child its own daemon so displays never mix:
+By default, all agents share one daemon and each MCP connection gets its own session. Displays created by one session are cleaned up when that session disconnects.
+
+If you need a fully separate daemon process (for stronger isolation, independent lifecycle, or a dedicated environment), use `--socket`:
 
 ```bash
 ./target/release/linux-x11-harness mcp --socket /tmp/lxh-agent-<id>.sock
 ```
 
-The child agent's displays live only in that socket's daemon and are cleaned up when the child disconnects.
+The displays for that socket live only in that daemon instance and are cleaned up when the connection ends.
 
 ## Core workflow
 
