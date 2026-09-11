@@ -49,5 +49,28 @@ jobs:
       - name: cargo build
         run: cargo build --release
 
+      - name: Verify test environment
+        run: |
+          echo "=== X11 / display tools ==="
+          Xvfb -version || true
+          Xephyr -version || true
+          xterm -version || true
+          echo "=== Python GTK availability ==="
+          python3 -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk; print('Gtk3 OK')" || true
+          echo "=== DBus session ==="
+          dbus-run-session -- bash -c 'echo DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS'
+          echo "=== Existing DISPLAYs ==="
+          ls -la /tmp/.X11-unix/ || true
+
       - name: cargo test
-        run: dbus-run-session -- cargo test --all-targets --workspace
+        env:
+          RUST_BACKTRACE: 1
+        run: dbus-run-session -- cargo test --all-targets --workspace -- --nocapture 2>&1 | tee cargo-test.log
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-test-log
+          path: cargo-test.log
+          retention-days: 7
