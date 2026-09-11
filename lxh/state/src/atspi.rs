@@ -177,18 +177,18 @@ pub async fn set_value(pid: u32, index: usize, value: &str) -> Result<(), LxhErr
 
     let node = walk_to_index(&conn, &app, index)
         .await?
-        .ok_or(LxhError::NotImplemented)?;
+        .ok_or(LxhError::NotSupported)?;
 
-    let proxies = node.proxies().await.map_err(|_| LxhError::NotImplemented)?;
+    let proxies = node.proxies().await.map_err(|_| LxhError::NotSupported)?;
     let editable = proxies
         .editable_text()
         .await
-        .map_err(|_| LxhError::NotImplemented)?;
+        .map_err(|_| LxhError::NotSupported)?;
 
     editable
         .set_text_contents(value)
         .await
-        .map_err(|_| LxhError::NotImplemented)?;
+        .map_err(|_| LxhError::NotSupported)?;
 
     Ok(())
 }

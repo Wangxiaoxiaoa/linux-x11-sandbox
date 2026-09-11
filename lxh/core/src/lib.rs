@@ -2,16 +2,18 @@ use async_trait::async_trait;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LxhError {
-    #[error("not implemented")]
-    NotImplemented,
     #[error("process spawn failed: {0}")]
     ProcessSpawnFailed(String),
     #[error("process kill failed: {0}")]
     ProcessKillFailed(String),
     #[error("display not found: {0}")]
     DisplayNotFound(String),
+    #[error("display unavailable: {0}")]
+    DisplayUnavailable(String),
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
+    #[error("not supported")]
+    NotSupported,
 }
 
 pub mod x11 {
@@ -20,12 +22,12 @@ pub mod x11 {
     use x11rb::rust_connection::{ConnectError, RustConnection};
 
     pub fn xerr<E: std::fmt::Display>(e: E) -> LxhError {
-        LxhError::InvalidArgument(e.to_string())
+        LxhError::DisplayUnavailable(e.to_string())
     }
 
     pub fn open_connection(display: &str) -> Result<(RustConnection, usize), LxhError> {
         RustConnection::connect(Some(display)).map_err(|e: ConnectError| {
-            LxhError::InvalidArgument(format!("cannot open display: {e}"))
+            LxhError::DisplayUnavailable(format!("cannot open display: {e}"))
         })
     }
 
