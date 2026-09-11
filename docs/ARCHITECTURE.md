@@ -1,16 +1,16 @@
-# linux-x11-sandbox Architecture
+# linux-x11-harness Architecture
 
 > **Implementation status:** This document describes the target architecture. The current MVP implements the MCP stdio server, native X11/XTest driver, Xvfb + openbox runtime, and AT-SPI state access. Items marked as reserved or future (CuaDriver adapter, HTTP/SSE, C FFI, runtime submodules, Xephyr backend) are not yet implemented.
 
 ## 1. Overview
 
-`linux-x11-sandbox` is a Rust-based Linux GUI automation sandbox platform. It creates and manages multiple isolated X11 display environments, each capable of running GUI applications and exposing built-in automation primitives (mouse, keyboard, screenshot, AT-SPI state).
+`linux-x11-harness` is a Rust-based Linux GUI automation harness platform. It creates and manages multiple isolated X11 display environments, each capable of running GUI applications and exposing built-in automation primitives (mouse, keyboard, screenshot, AT-SPI state).
 
 The system is designed to be consumed in three ways:
 
-1. **MCP Server** — integrated by AI agents via the Model Context Protocol. A long-lived `linux-x11-sandbox serve` daemon owns displays and drivers; each agent runs a lightweight `linux-x11-sandbox mcp` stdio-to-socket proxy.
+1. **MCP Server** — integrated by AI agents via the Model Context Protocol. A long-lived `linux-x11-harness serve` daemon owns displays and drivers; each agent runs a lightweight `linux-x11-harness mcp` stdio-to-socket proxy.
 2. **Rust SDK** — embedded directly into Rust applications as a library.
-3. **Plugin / External Sandbox Integration** — embedded or orchestrated by other sandbox platforms through standard process or network interfaces.
+3. **Plugin / External Harness Integration** — embedded or orchestrated by other harness platforms through standard process or network interfaces.
 
 ## 2. Design Goals
 
@@ -20,9 +20,9 @@ The system is designed to be consumed in three ways:
 | **Backend variety** | Headless (`Xvfb`) X server; `Xephyr` is reserved for future use. |
 | **Pluggable driver** | Built-in native driver by default; optional `cua-driver` adapter through a unified `Driver` trait. |
 | **Built-in automation** | Mouse, keyboard, screenshot, and AT-SPI state access per display. |
-| **No host interference** | Operations on sandbox displays must not steal focus from or affect the user's main desktop. |
+| **No host interference** | Operations on harness displays must not steal focus from or affect the user's main desktop. |
 | **Three consumption modes** | MCP, SDK, and plugin/embeddable. |
-| **External-sandbox friendly** | Runnable inside containers, manageable via standard protocols, configurable through files/env vars. |
+| **External-harness friendly** | Runnable inside containers, manageable via standard protocols, configurable through files/env vars. |
 | **Clean lifecycle** | Robust startup, health checking, graceful shutdown, and resource cleanup. |
 | **x11rb-only** | All X11 protocol access uses `x11rb`; no Xlib linkage. |
 
@@ -30,15 +30,15 @@ The system is designed to be consumed in three ways:
 
 ### 3.1 MCP Server
 
-The primary integration path for AI agents. `linux-x11-sandbox` exposes a set of MCP tools prefixed with `lxs_`.
+The primary integration path for AI agents. `linux-x11-harness` exposes a set of MCP tools prefixed with `lxh_`.
 
 The default integration is stdio:
 
 ```json
 {
   "mcpServers": {
-    "linux-x11-sandbox": {
-      "command": "linux-x11-sandbox",
+    "linux-x11-harness": {
+      "command": "linux-x11-harness",
       "args": ["mcp"]
     }
   }
@@ -48,9 +48,9 @@ The default integration is stdio:
 The proxy auto-starts the daemon if it is not already running. For explicit control:
 
 ```bash
-linux-x11-sandbox serve   # start daemon
-linux-x11-sandbox status  # check daemon
-linux-x11-sandbox stop    # stop daemon
+linux-x11-harness serve   # start daemon
+linux-x11-harness status  # check daemon
+linux-x11-harness stop    # stop daemon
 ```
 
 ### 3.2 Rust SDK
@@ -58,7 +58,7 @@ linux-x11-sandbox stop    # stop daemon
 A programmatic Rust API for direct function calls within Rust applications.
 
 ```rust
-use linux_x11_sandbox::{Runtime, DisplayConfig, Backend, DriverType};
+use linux_x11_harness::{Runtime, DisplayConfig, Backend, DriverType};
 
 let runtime = Runtime::new(Default::default()).await?;
 let display = runtime
@@ -71,7 +71,7 @@ let display = runtime
     })
     .await?;
 
-display.launch_app("chromium", &["--no-sandbox"]).await?;
+display.launch_app("chromium", &["--no-harness"]).await?;
 display.driver().click(100, 200, MouseButton::Left, 1).await?;
 let png = display.driver().screenshot().await?;
 runtime.destroy_display(display.id()).await?;
@@ -79,19 +79,19 @@ runtime.destroy_display(display.id()).await?;
 
 ### 3.3 Plugin / Embeddable
 
-`linux-x11-sandbox` can be embedded or orchestrated by other sandbox platforms through:
+`linux-x11-harness` can be embedded or orchestrated by other harness platforms through:
 
 1. **Rust crate dependency** — consume the SDK.
 2. **C FFI** — load as a dynamic library from C/C++/Go/Python/etc.
 3. **Subprocess + MCP/HTTP** — spawned and controlled by external orchestrators.
 4. **Docker image** — deployed as a container service.
 
-No platform-specific adapter is required. External sandboxes interact through standard interfaces.
+No platform-specific adapter is required. External harnesses interact through standard interfaces.
 
 ## 4. Workspace & Crate Structure
 
 ```text
-linux-x11-sandbox/
+linux-x11-harness/
 ├── Cargo.toml                  # workspace root
 ├── docs/                       # design and usage documentation
 ├── .github/                    # CI workflows
@@ -109,22 +109,22 @@ linux-x11-sandbox/
 
 | Crate | Responsibility | Dependencies |
 |-------|----------------|--------------|
-| `lxs-core` | Error types, configuration structs, shared data models, and all backend traits. | None |
-| `lxs-action` | Native input primitives: mouse move, click, scroll, keyboard type/key. | `lxs-core` |
-| `lxs-state` | Native state primitives: screenshot, window state, AT-SPI tree, element bounds, actions. | `lxs-core` |
-| `lxs-driver` | Implements the `Driver` trait: `NativeDriver` (combines action + state) and optional `CuaDriver` adapter. | `lxs-core`, `lxs-action`, `lxs-state` |
-| `lxs-runtime` | Orchestrates displays: X server/WM/process lifecycle, display allocation, driver injection. | `lxs-core`, `lxs-driver` |
-| `lxs-daemon` | Long-lived daemon that owns displays and drivers; MCP stdio proxy; CLI binary. | `lxs-core`, `lxs-runtime` |
+| `lxh-core` | Error types, configuration structs, shared data models, and all backend traits. | None |
+| `lxh-action` | Native input primitives: mouse move, click, scroll, keyboard type/key. | `lxh-core` |
+| `lxh-state` | Native state primitives: screenshot, window state, AT-SPI tree, element bounds, actions. | `lxh-core` |
+| `lxh-driver` | Implements the `Driver` trait: `NativeDriver` (combines action + state) and optional `CuaDriver` adapter. | `lxh-core`, `lxh-action`, `lxh-state` |
+| `lxh-runtime` | Orchestrates displays: X server/WM/process lifecycle, display allocation, driver injection. | `lxh-core`, `lxh-driver` |
+| `lxh-daemon` | Long-lived daemon that owns displays and drivers; MCP stdio proxy; CLI binary. | `lxh-core`, `lxh-runtime` |
 
 ### 4.2 Dependency Direction
 
 ```text
-lxs-core
-  ├── lxs-action
-  ├── lxs-state
-  ├── lxs-driver  (depends on action + state, implements Driver trait)
-  └── lxs-runtime (depends on driver, orchestrates everything)
-        └── lxs-daemon
+lxh-core
+  ├── lxh-action
+  ├── lxh-state
+  ├── lxh-driver  (depends on action + state, implements Driver trait)
+  └── lxh-runtime (depends on driver, orchestrates everything)
+        └── lxh-daemon
 ```
 
 No reverse dependencies.
@@ -137,27 +137,27 @@ Following cua-driver's practice, launched applications inherit accessibility-ena
 
 ### 5.1 `Driver` Trait
 
-The central automation abstraction, defined in `lxs-core`.
+The central automation abstraction, defined in `lxh-core`.
 
 ```rust
 #[async_trait]
 pub trait Driver: Send + Sync {
     // ---- input ----
-    async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxsError>;
-    async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxsError>;
-    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError>;
-    async fn type_text(&self, text: &str) -> Result<(), LxsError>;
-    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
+    async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxhError>;
+    async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxhError>;
+    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxhError>;
+    async fn type_text(&self, text: &str) -> Result<(), LxhError>;
+    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxhError>;
 
     // ---- capture ----
-    async fn screenshot(&self) -> Result<Screenshot, LxsError>;
-    async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError>;
+    async fn screenshot(&self) -> Result<Screenshot, LxhError>;
+    async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxhError>;
 
     // ---- a11y ----
-    async fn window_state(&self) -> Result<WindowState, LxsError>;
-    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxsError>;
-    async fn element_bounds(&self, pid: u32, index: usize) -> Result<Bounds, LxsError>;
-    async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError>;
+    async fn window_state(&self) -> Result<WindowState, LxhError>;
+    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxhError>;
+    async fn element_bounds(&self, pid: u32, index: usize) -> Result<Bounds, LxhError>;
+    async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxhError>;
 }
 ```
 
@@ -172,7 +172,7 @@ pub struct NativeDriver {
 }
 ```
 
-`NativeDriver` is the default implementation. It composes backends from `lxs-action` and `lxs-state`.
+`NativeDriver` is the default implementation. It composes backends from `lxh-action` and `lxh-state`.
 
 ### 5.3 Cua-Driver Adapter (Reserved)
 
@@ -187,30 +187,30 @@ pub struct CuaDriver {
 
 ### 5.4 Backend Traits
 
-Defined in `lxs-core`, implemented by `lxs-action` and `lxs-state`:
+Defined in `lxh-core`, implemented by `lxh-action` and `lxh-state`:
 
 ```rust
 #[async_trait]
 pub trait InputBackend: Send + Sync {
-    async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxsError>;
-    async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxsError>;
-    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxsError>;
-    async fn type_text(&self, text: &str) -> Result<(), LxsError>;
-    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxsError>;
+    async fn click(&self, x: i32, y: i32, button: MouseButton, count: u32) -> Result<(), LxhError>;
+    async fn move_mouse(&self, x: i32, y: i32) -> Result<(), LxhError>;
+    async fn scroll(&self, dx: i32, dy: i32) -> Result<(), LxhError>;
+    async fn type_text(&self, text: &str) -> Result<(), LxhError>;
+    async fn key(&self, key: &str, modifiers: &[&str]) -> Result<(), LxhError>;
 }
 
 #[async_trait]
 pub trait CaptureBackend: Send + Sync {
-    async fn screenshot(&self) -> Result<Screenshot, LxsError>;
-    async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxsError>;
+    async fn screenshot(&self) -> Result<Screenshot, LxhError>;
+    async fn screenshot_region(&self, region: Rect) -> Result<Screenshot, LxhError>;
 }
 
 #[async_trait]
 pub trait A11yBackend: Send + Sync {
-    async fn window_state(&self) -> Result<WindowState, LxsError>;
-    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxsError>;
-    async fn element_bounds(&self, pid: u32, index: usize) -> Result<Bounds, LxsError>;
-    async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxsError>;
+    async fn window_state(&self) -> Result<WindowState, LxhError>;
+    async fn accessibility_tree(&self, pid: Option<u32>) -> Result<AccessibilityTree, LxhError>;
+    async fn element_bounds(&self, pid: u32, index: usize) -> Result<Bounds, LxhError>;
+    async fn perform_action(&self, pid: u32, index: usize, action: &str) -> Result<(), LxhError>;
 }
 ```
 
@@ -248,10 +248,10 @@ pub struct Display {
 
 ## 6. Runtime Internals
 
-`lxs-runtime` contains the infrastructure for managing displays.
+`lxh-runtime` contains the infrastructure for managing displays.
 
 ```text
-lxs-runtime/
+lxh-runtime/
 └── src/
     ├── lib.rs
     ├── runtime.rs          # Runtime top-level API
@@ -278,11 +278,11 @@ lxs-runtime/
 
 ### 6.1 X Server Management
 
-X server backends (`XvfbBackend`, `XephyrBackend`) are implemented in `lxs-runtime`. The `XServerBackend` trait is defined in `lxs-core`.
+X server backends (`XvfbBackend`, `XephyrBackend`) are implemented in `lxh-runtime`. The `XServerBackend` trait is defined in `lxh-core`.
 
 ### 6.2 Window Manager
 
-Window manager launchers (e.g., `OpenboxWM`) live in `lxs-runtime/src/wm/`.
+Window manager launchers (e.g., `OpenboxWM`) live in `lxh-runtime/src/wm/`.
 
 ### 6.3 Process Supervision
 
@@ -290,36 +290,36 @@ Window manager launchers (e.g., `OpenboxWM`) live in `lxs-runtime/src/wm/`.
 
 ## 7. MCP Tool Reference
 
-All tools are prefixed with `lxs_`.
+All tools are prefixed with `lxh_`.
 
 | Tool | Purpose | Required args |
 |------|---------|---------------|
-| `lxs_display_create` | Create display (`backend`: `xvfb` or `xephyr`) | — |
-| `lxs_display_attach` | Attach to an existing display (e.g. `:0`) | `display_id` |
-| `lxs_display_detach` | Detach from an existing display without destroying it | `display_id` |
-| `lxs_display_destroy` | Destroy display | `display_id` |
-| `lxs_display_info` | Resolution and app count | `display_id` |
-| `lxs_app_launch` | Launch an application | `display_id`, `command` |
-| `lxs_app_terminate` | Terminate by PID | `display_id`, `pid` |
-| `lxs_input_click` | Click at `(x, y)` with optional button/count | `display_id`, `x`, `y`, `button`, `count` |
-| `lxs_input_move` | Move cursor | `display_id`, `x`, `y` |
-| `lxs_input_scroll` | Scroll | `display_id` |
-| `lxs_input_drag` | Drag from `(x1, y1)` to `(x2, y2)` | `display_id`, `x1`, `y1`, `x2`, `y2` |
-| `lxs_input_get_cursor_position` | Get current mouse position | `display_id` |
-| `lxs_input_type` | Type text | `display_id`, `text` |
-| `lxs_input_key` | Press key or combo | `display_id`, `key` |
-| `lxs_capture_screenshot` | Full screenshot | `display_id` |
-| `lxs_capture_window` | Screenshot a specific window | `display_id`, `window_id` |
-| `lxs_window_focus` | Focus window by id | `display_id`, `window_id` |
-| `lxs_window_set_frame` | Set window position and size | `display_id`, `window_id`, `x`, `y`, `width`, `height` |
-| `lxs_window_close` | Close window by id | `display_id`, `window_id` |
-| `lxs_clipboard_get` | Get clipboard text | `display_id` |
-| `lxs_clipboard_set` | Set clipboard text | `display_id`, `text` |
-| `lxs_get_desktop_overview` | Desktop overview: processes and windows | `display_id` |
-| `lxs_get_window_state` | Window metadata + optional tree + optional screenshot | `display_id`, `pid`, `window_id` |
-| `lxs_set_value` | Set AT-SPI editable element value | `display_id`, `pid`, `index`, `value` |
-| `lxs_click_element` | Click an AT-SPI element by pid and index | `display_id`, `pid`, `index`, `button` |
-| `lxs_wait` | Wait for milliseconds | `ms` |
+| `lxh_display_create` | Create display (`backend`: `xvfb` or `xephyr`) | — |
+| `lxh_display_attach` | Attach to an existing display (e.g. `:0`) | `display_id` |
+| `lxh_display_detach` | Detach from an existing display without destroying it | `display_id` |
+| `lxh_display_destroy` | Destroy display | `display_id` |
+| `lxh_display_info` | Resolution and app count | `display_id` |
+| `lxh_app_launch` | Launch an application | `display_id`, `command` |
+| `lxh_app_terminate` | Terminate by PID | `display_id`, `pid` |
+| `lxh_input_click` | Click at `(x, y)` with optional button/count | `display_id`, `x`, `y`, `button`, `count` |
+| `lxh_input_move` | Move cursor | `display_id`, `x`, `y` |
+| `lxh_input_scroll` | Scroll | `display_id` |
+| `lxh_input_drag` | Drag from `(x1, y1)` to `(x2, y2)` | `display_id`, `x1`, `y1`, `x2`, `y2` |
+| `lxh_input_get_cursor_position` | Get current mouse position | `display_id` |
+| `lxh_input_type` | Type text | `display_id`, `text` |
+| `lxh_input_key` | Press key or combo | `display_id`, `key` |
+| `lxh_capture_screenshot` | Full screenshot | `display_id` |
+| `lxh_capture_window` | Screenshot a specific window | `display_id`, `window_id` |
+| `lxh_window_focus` | Focus window by id | `display_id`, `window_id` |
+| `lxh_window_set_frame` | Set window position and size | `display_id`, `window_id`, `x`, `y`, `width`, `height` |
+| `lxh_window_close` | Close window by id | `display_id`, `window_id` |
+| `lxh_clipboard_get` | Get clipboard text | `display_id` |
+| `lxh_clipboard_set` | Set clipboard text | `display_id`, `text` |
+| `lxh_get_desktop_overview` | Desktop overview: processes and windows | `display_id` |
+| `lxh_get_window_state` | Window metadata + optional tree + optional screenshot | `display_id`, `pid`, `window_id` |
+| `lxh_set_value` | Set AT-SPI editable element value | `display_id`, `pid`, `index`, `value` |
+| `lxh_click_element` | Click an AT-SPI element by pid and index | `display_id`, `pid`, `index`, `button` |
+| `lxh_wait` | Wait for milliseconds | `ms` |
 
 
 ## 8. SDK API Surface
@@ -328,22 +328,22 @@ The SDK exposes async Rust APIs mirroring the MCP tools.
 
 ```rust
 impl Runtime {
-    pub async fn new(config: RuntimeConfig) -> Result<Self, LxsError>;
-    pub async fn create_display(&self, config: DisplayConfig) -> Result<DisplayHandle, LxsError>;
-    pub async fn destroy_display(&self, id: &str) -> Result<(), LxsError>;
+    pub async fn new(config: RuntimeConfig) -> Result<Self, LxhError>;
+    pub async fn create_display(&self, config: DisplayConfig) -> Result<DisplayHandle, LxhError>;
+    pub async fn destroy_display(&self, id: &str) -> Result<(), LxhError>;
     pub async fn list_displays(&self) -> Vec<DisplayInfo>;
 }
 
 impl DisplayHandle {
     pub fn id(&self) -> &str;
     pub fn display(&self) -> &str;
-    pub async fn launch_app(&self, command: &str, args: &[&str]) -> Result<AppHandle, LxsError>;
-    pub async fn terminate_app(&self, pid: u32) -> Result<(), LxsError>;
+    pub async fn launch_app(&self, command: &str, args: &[&str]) -> Result<AppHandle, LxhError>;
+    pub async fn terminate_app(&self, pid: u32) -> Result<(), LxhError>;
     pub fn driver(&self) -> Arc<dyn Driver>;
 }
 ```
 
-## 9. Plugin / External Sandbox Integration
+## 9. Plugin / External Harness Integration
 
 ### 9.1 Rust Crate Dependency
 
@@ -351,7 +351,7 @@ External Rust projects add the crate without the MCP binary:
 
 ```toml
 [dependencies]
-linux-x11-sandbox = { version = "0.1", default-features = false }
+linux-x11-harness = { version = "0.1", default-features = false }
 ```
 
 ### 9.2 C FFI
@@ -359,23 +359,23 @@ linux-x11-sandbox = { version = "0.1", default-features = false }
 A stable C ABI for loading as a dynamic library:
 
 ```c
-lxs_runtime_t* lxs_runtime_new(const lxs_config_t* config);
-lxs_display_t* lxs_display_create(lxs_runtime_t* rt, const lxs_display_config_t* cfg);
-int lxs_display_click(lxs_display_t* d, int x, int y);
-void lxs_display_destroy(lxs_display_t* d);
-void lxs_runtime_free(lxs_runtime_t* rt);
+lxh_runtime_t* lxh_runtime_new(const lxh_config_t* config);
+lxh_display_t* lxh_display_create(lxh_runtime_t* rt, const lxh_display_config_t* cfg);
+int lxh_display_click(lxh_display_t* d, int x, int y);
+void lxh_display_destroy(lxh_display_t* d);
+void lxh_runtime_free(lxh_runtime_t* rt);
 ```
 
 ### 9.3 Subprocess + MCP/HTTP
 
-External sandboxes spawn `linux-x11-sandbox serve` and control it via MCP over the Unix socket.
+External harnesses spawn `linux-x11-harness serve` and control it via MCP over the Unix socket.
 
 ```bash
-docker run linux-x11-sandbox:latest serve
+docker run linux-x11-harness:latest serve
 ```
 
 ```bash
-linux-x11-sandbox serve
+linux-x11-harness serve
 ```
 
 No custom adapter is required on either side.
@@ -386,24 +386,24 @@ No custom adapter is required on either side.
 
 ```text
 agent
-  └─► lxs_display_create({ backend: "xvfb", driver: "native" })
+  └─► lxh_display_create({ backend: "xvfb", driver: "native" })
        └─► Runtime creates Display :99
             ├─► starts Xvfb on :99
             ├─► starts openbox on :99
             └─► injects NativeDriver for :99
        ◄── returns { display_id: "d1", display: ":99" }
 
-  └─► lxs_app_launch({ display_id: "d1", command: "wechat" })
+  └─► lxh_app_launch({ display_id: "d1", command: "wechat" })
        └─► Display :99 launches wechat
 
-  └─► lxs_get_window_state({ display_id: "d1", pid: 1234, window_id: 12345678, include_tree: true })
+  └─► lxh_get_window_state({ display_id: "d1", pid: 1234, window_id: 12345678, include_tree: true })
        └─► NativeDriver queries AT-SPI on :99
        ◄── returns window metadata + tree
 
-  └─► lxs_input_click({ display_id: "d1", x: 100, y: 200 })
+  └─► lxh_input_click({ display_id: "d1", x: 100, y: 200 })
        └─► NativeDriver injects XTest click on :99
 
-  └─► lxs_display_destroy({ display_id: "d1" })
+  └─► lxh_display_destroy({ display_id: "d1" })
        └─► Runtime kills Xvfb, WM, wechat; cleans lock files
 ```
 
@@ -419,11 +419,11 @@ Rust app
        └─► runtime.destroy_display(id)
 ```
 
-### 10.3 External Sandbox Spawns Container
+### 10.3 External Harness Spawns Container
 
 ```text
-e2b sandbox
-  └─► docker run linux-x11-sandbox serve --transport sse
+e2b harness
+  └─► docker run linux-x11-harness serve --transport sse
        └─► SSE endpoint exposed
             ├─► /health
             ├─► /mcp/v1/tools/list
@@ -437,8 +437,8 @@ e2b sandbox
 Configuration sources, in order of precedence:
 
 1. CLI arguments
-2. Environment variables (`LXS_*`)
-3. Configuration file (`~/.config/linux-x11-sandbox/config.toml`)
+2. Environment variables (`LXH_*`)
+3. Configuration file (`~/.config/linux-x11-harness/config.toml`)
 4. Defaults
 
 ```toml
@@ -503,7 +503,7 @@ On `SIGTERM` / `SIGINT`:
 
 ## 13. Error Handling & Observability
 
-- Unified `LxsError` type with structured variants.
+- Unified `LxhError` type with structured variants.
 - `tracing` for structured logging.
 - Per-display health status.
 - Prometheus-style metrics (optional): active displays, operations per second, failures.
@@ -513,11 +513,11 @@ On `SIGTERM` / `SIGINT`:
 
 | Pattern | Command / Usage |
 |---------|-----------------|
-| Local MCP stdio | `linux-x11-sandbox mcp` |
-| Remote MCP SSE | `linux-x11-sandbox serve --transport sse --port 8080` |
-| Rust SDK | `linux-x11-sandbox = "0.1"` |
-| C FFI plugin | `liblinux_x11_sandbox.so` |
-| Docker | `docker run -p 8080:8080 linux-x11-sandbox` |
+| Local MCP stdio | `linux-x11-harness mcp` |
+| Remote MCP SSE | `linux-x11-harness serve --transport sse --port 8080` |
+| Rust SDK | `linux-x11-harness = "0.1"` |
+| C FFI plugin | `liblinux_x11_harness.so` |
+| Docker | `docker run -p 8080:8080 linux-x11-harness` |
 | Inside e2b/Daytona | Spawn container or subprocess with MCP/HTTP |
 
 ## 15. Future Considerations
@@ -530,10 +530,10 @@ On `SIGTERM` / `SIGINT`:
 
 ## 16. Summary
 
-`linux-x11-sandbox` is a focused Linux X11 GUI sandbox with a built-in automation driver and a pluggable driver interface (including a reserved `cua-driver` adapter). It intentionally does not implement general-purpose container sandboxing; instead, it is designed to be composed with existing sandbox platforms through standard interfaces (MCP, HTTP, Rust SDK, C FFI).
+`linux-x11-harness` is a focused Linux X11 GUI harness with a built-in automation driver and a pluggable driver interface (including a reserved `cua-driver` adapter). It intentionally does not implement general-purpose container harnessing; instead, it is designed to be composed with existing harness platforms through standard interfaces (MCP, HTTP, Rust SDK, C FFI).
 
 Three access modes share the same core runtime:
 
 - **MCP** for agents.
 - **SDK** for Rust applications.
-- **Plugin/FFI/subprocess** for external sandbox platforms.
+- **Plugin/FFI/subprocess** for external harness platforms.

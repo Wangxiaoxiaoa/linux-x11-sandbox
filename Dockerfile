@@ -1,4 +1,4 @@
-# Multi-stage build for linux-x11-sandbox.
+# Multi-stage build for linux-x11-harness.
 # The resulting image contains the MCP server binary and a minimal X11 runtime.
 
 FROM rust:1-bookworm AS builder
@@ -34,9 +34,9 @@ RUN apt-get update && apt-get install -y \
     fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/linux-x11-sandbox /usr/local/bin/linux-x11-sandbox
-RUN chmod +x /usr/local/bin/linux-x11-sandbox
+COPY --from=builder /app/target/release/linux-x11-harness /usr/local/bin/linux-x11-harness
+RUN chmod +x /usr/local/bin/linux-x11-harness
 
 ENV DISPLAY=:99
 
-ENTRYPOINT ["linux-x11-sandbox"]
+ENTRYPOINT ["linux-x11-harness"]

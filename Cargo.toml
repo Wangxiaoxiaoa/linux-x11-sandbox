@@ -1,12 +1,12 @@
 [workspace]
-members = ["lxs/*"]
+members = ["lxh/*"]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox"
+repository = "https://github.com/Wangxiaoxiaoa/linux-x11-harness"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-std", "net", "io-util", "fs"] }
@@ -20,9 +20,9 @@ x11-keysymdef = "0.2"
 base64 = "0.22"
 atspi = { version = "0.30", features = ["tokio"] }
 
-lxs-core = { path = "lxs/core" }
-lxs-action = { path = "lxs/action" }
-lxs-state = { path = "lxs/state" }
-lxs-driver = { path = "lxs/driver" }
-lxs-runtime = { path = "lxs/runtime" }
-lxs-daemon = { path = "lxs/daemon" }
+lxh-core = { path = "lxh/core" }
+lxh-action = { path = "lxh/action" }
+lxh-state = { path = "lxh/state" }
+lxh-driver = { path = "lxh/driver" }
+lxh-runtime = { path = "lxh/runtime" }
+lxh-daemon = { path = "lxh/daemon" }

@@ -1,8 +1,8 @@
 services:
-  linux-x11-sandbox:
+  linux-x11-harness:
     build: .
-    container_name: linux-x11-sandbox
-    # Run the long-lived daemon; agents exec in with `linux-x11-sandbox mcp`.
+    container_name: linux-x11-harness
+    # Run the long-lived daemon; agents exec in with `linux-x11-harness mcp`.
     command: ["serve"]
     environment:
       - DISPLAY=:99

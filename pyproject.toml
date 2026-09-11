@@ -3,20 +3,20 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "linux-x11-sandbox"
+name = "linux-x11-harness"
 version = "0.1.0"
-description = "Linux X11 GUI sandbox with MCP server and native automation driver"
+description = "Linux X11 GUI harness with MCP server and native automation driver"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "linux-x11-sandbox contributors" },
+    { name = "linux-x11-harness contributors" },
 ]
 keywords = [
     "mcp",
     "gui",
     "automation",
     "x11",
-    "sandbox",
+    "harness",
     "accessibility",
 ]
 classifiers = [
@@ -38,18 +38,18 @@ dependencies = []
 test = ["pytest"]
 
 [project.urls]
-Homepage = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox"
-Repository = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox"
-Issues = "https://github.com/Wangxiaoxiaoa/linux-x11-sandbox/issues"
+Homepage = "https://github.com/Wangxiaoxiaoa/linux-x11-harness"
+Repository = "https://github.com/Wangxiaoxiaoa/linux-x11-harness"
+Issues = "https://github.com/Wangxiaoxiaoa/linux-x11-harness/issues"
 
 [project.scripts]
-linux-x11-sandbox = "linux_x11_sandbox.__main__:main"
+linux-x11-harness = "linux_x11_harness.__main__:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["python/src/linux_x11_sandbox"]
+packages = ["python/src/linux_x11_harness"]
 artifacts = [
-    "python/src/linux_x11_sandbox/bin/*",
-    "python/src/linux_x11_sandbox/skill/*",
+    "python/src/linux_x11_harness/bin/*",
+    "python/src/linux_x11_harness/skill/*",
 ]
 pure-python = false
 

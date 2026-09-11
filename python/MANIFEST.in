@@ -1,2 +1,2 @@
-recursive-include src/linux_x11_sandbox/bin *
-recursive-include src/linux_x11_sandbox/skill *
+recursive-include src/linux_x11_harness/bin *
+recursive-include src/linux_x11_harness/skill *

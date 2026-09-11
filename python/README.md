@@ -1,7 +1,7 @@
-# linux-x11-sandbox Python package
+# linux-x11-harness Python package
 
 Python wrapper and distribution package for
-[linux-x11-sandbox](https://github.com/Wangxiaoxiaoa/linux-x11-sandbox).
+[linux-x11-harness](https://github.com/Wangxiaoxiaoa/linux-x11-harness).
 
 It bundles the Rust MCP server binary and provides a one-click setup command to
 register the skill and MCP server with common agents.
@@ -11,7 +11,7 @@ register the skill and MCP server with common agents.
 Requires Python 3.10+, Rust toolchain, and Linux.
 
 ```bash
-pip install linux-x11-sandbox
+pip install linux-x11-harness
 ```
 
 During installation, pip compiles the Rust binary from source and bundles it
@@ -20,7 +20,7 @@ into the wheel.
 ## Use the MCP server
 
 ```bash
-linux-x11-sandbox
+linux-x11-harness
 ```
 
 The server speaks MCP over stdin/stdout.
@@ -28,7 +28,7 @@ The server speaks MCP over stdin/stdout.
 ## Register with your agent
 
 ```bash
-linux-x11-sandbox setup
+linux-x11-harness setup
 ```
 
 This detects installed agents and registers:
@@ -41,7 +41,7 @@ Restart your agent after setup.
 ## Python API
 
 ```python
-from linux_x11_sandbox import get_binary_path
+from linux_x11_harness import get_binary_path
 
 print(get_binary_path())
 ```

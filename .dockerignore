@@ -1,6 +1,6 @@
 /target
-/python/src/linux_x11_sandbox/bin
-/python/src/linux_x11_sandbox/skill
+/python/src/linux_x11_harness/bin
+/python/src/linux_x11_harness/skill
 **/__pycache__
 *.pyc
 *.pyo
