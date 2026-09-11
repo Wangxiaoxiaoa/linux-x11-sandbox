@@ -1,6 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -8,6 +9,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::process::Command;
 use tokio::time::timeout;
+
+static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn bin_path() -> PathBuf {
     env::var("CARGO_BIN_EXE_linux-x11-harness")
@@ -70,9 +73,13 @@ impl Connection {
 impl DaemonGuard {
     async fn new() -> Self {
         let tmp = env::temp_dir();
-        let name = format!("lxh-test-{}.sock", std::process::id());
-        let socket = tmp.join(&name);
-        let pid = tmp.join(format!("lxh-test-{}.pid", std::process::id()));
+        let unique = format!(
+            "{}-{}",
+            std::process::id(),
+            TEST_COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let socket = tmp.join(format!("lxh-test-{unique}.sock"));
+        let pid = tmp.join(format!("lxh-test-{unique}.pid"));
         let _ = tokio::fs::remove_file(&socket).await;
         let _ = tokio::fs::remove_file(&pid).await;
 
