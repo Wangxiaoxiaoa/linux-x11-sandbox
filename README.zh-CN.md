@@ -38,14 +38,16 @@ linux-x11-harness setup
 
 ## 支持的智能体
 
-| 智能体 | 接入方式 |
-|---|---|
-| [Claude Code](https://claude.ai/code) | MCP server |
-| [Codex](https://github.com/openai/codex) | MCP server |
-| [Qwen](https://qwen.aliyun.com/) | MCP server |
-| [OpenCode](https://opencode.ai/) | MCP server |
-| [Kimi Code](https://kimi-code.moonshot.cn/) | Agent skill |
-| [Pi](https://pi.ai/) | Agent skill |
+`linux-x11-harness setup` 会在智能体支持的情况下，同时注册 MCP server 和 Agent skill。
+
+| 智能体 | MCP server | Agent skill |
+|---|---|---|
+| [Claude Code](https://claude.ai/code) | ✅ | ✅ |
+| [Codex](https://github.com/openai/codex) | ✅ | ✅ |
+| [Qwen](https://qwen.aliyun.com/) | ✅ | — |
+| [OpenCode](https://opencode.ai/) | ✅ | — |
+| [Kimi Code](https://kimi-code.moonshot.cn/) | — | ✅ |
+| [Pi](https://pi.ai/) | — | ✅ |
 
 其他兼容 MCP 的智能体可以手动通过 `linux-x11-harness mcp` 连接。
 

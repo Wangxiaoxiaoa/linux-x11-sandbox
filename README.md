@@ -38,16 +38,18 @@ Requirements: Python 3.10+, Rust toolchain, Linux with `xvfb` and `openbox`.
 
 ## Supported agents
 
-| Agent | Integration |
-|---|---|
-| [Claude Code](https://claude.ai/code) | MCP server |
-| [Codex](https://github.com/openai/codex) | MCP server |
-| [Qwen](https://qwen.aliyun.com/) | MCP server |
-| [OpenCode](https://opencode.ai/) | MCP server |
-| [Kimi Code](https://kimi-code.moonshot.cn/) | Agent skill |
-| [Pi](https://pi.ai/) | Agent skill |
+`linux-x11-harness setup` auto-configures both the MCP server and the agent skill where the agent supports them.
 
-Any other MCP-compatible agent can connect manually using `linux-x11-harness mcp`.
+| Agent | MCP server | Agent skill |
+|---|---|---|
+| [Claude Code](https://claude.ai/code) | ✅ | ✅ |
+| [Codex](https://github.com/openai/codex) | ✅ | ✅ |
+| [Qwen](https://qwen.aliyun.com/) | ✅ | — |
+| [OpenCode](https://opencode.ai/) | ✅ | — |
+| [Kimi Code](https://kimi-code.moonshot.cn/) | — | ✅ |
+| [Pi](https://pi.ai/) | — | ✅ |
+
+Other MCP-compatible agents can connect manually with `linux-x11-harness mcp`.
 
 ## Manual commands
 
