@@ -1,0 +1,11 @@
+[package]
+name = "lxh-preview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lxh-core = { workspace = true }
+image = { workspace = true }
+tokio = { workspace = true }
+x11rb = { workspace = true }

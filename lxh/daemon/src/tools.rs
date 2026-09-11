@@ -24,6 +24,10 @@ pub struct DisplayCreateArgs {
     pub backend: Option<BackendArg>,
     #[serde(default)]
     pub persistent: bool,
+    #[serde(default)]
+    pub preview: Option<bool>,
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

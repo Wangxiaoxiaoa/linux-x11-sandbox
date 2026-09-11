@@ -19,6 +19,7 @@ x11rb = { workspace = true }
 lxh-core = { workspace = true }
 lxh-driver = { workspace = true }
 lxh-runtime = { workspace = true }
+lxh-preview = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 libc = "0.2"
