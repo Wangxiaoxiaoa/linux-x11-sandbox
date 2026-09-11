@@ -16,11 +16,13 @@ fn resolve_socket_path(args: &mut Vec<String>) -> PathBuf {
     }
 
     if let Some(i) = idx {
-        if i + 1 < args.len() {
-            let path = args.remove(i + 1);
-            args.remove(i);
-            return PathBuf::from(path);
+        if i + 1 >= args.len() {
+            eprintln!("error: --socket requires a value");
+            std::process::exit(1);
         }
+        let path = args.remove(i + 1);
+        args.remove(i);
+        return PathBuf::from(path);
     }
 
     env::var("LXH_SOCKET_PATH")

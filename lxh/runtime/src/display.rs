@@ -128,7 +128,7 @@ impl Display {
             let pos = apps
                 .iter()
                 .position(|p| p.pid() == pid)
-                .ok_or_else(|| LxhError::DisplayNotFound(format!("pid {}", pid)))?;
+                .ok_or_else(|| LxhError::InvalidArgument(format!("pid {} not found", pid)))?;
             apps.remove(pos)
         };
         proc.kill().await
@@ -165,7 +165,4 @@ impl Display {
         Ok(())
     }
 
-    pub async fn detach(&mut self) -> Result<(), LxhError> {
-        Ok(())
-    }
 }

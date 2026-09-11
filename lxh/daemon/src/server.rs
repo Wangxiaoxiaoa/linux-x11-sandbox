@@ -73,8 +73,17 @@ async fn handle_client(
             continue;
         }
 
-        let req: Request = serde_json::from_str(&line)
-            .map_err(|e| LxhError::InvalidArgument(format!("invalid json: {e}")))?;
+        let req = match serde_json::from_str::<Request>(&line) {
+            Ok(req) => req,
+            Err(e) => {
+                let resp = Response::error(None, -32700, &format!("invalid json: {e}"));
+                let msg = serde_json::to_string(&resp)
+                    .map_err(|e| LxhError::InvalidArgument(format!("serialize failed: {e}")))?;
+                write_half.write_all(msg.as_bytes()).await.ok();
+                write_half.write_all(b"\n").await.ok();
+                continue;
+            }
+        };
 
         let resp = dispatch(&state, session, req).await;
         let msg = serde_json::to_string(&resp)

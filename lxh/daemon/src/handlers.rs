@@ -29,6 +29,18 @@ impl ClientSession {
     }
 }
 
+fn require_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, LxhError> {
+    args[key].as_str().ok_or_else(|| LxhError::InvalidArgument(format!("{key} required")))
+}
+
+fn require_i64(args: &Value, key: &str) -> Result<i64, LxhError> {
+    args[key].as_i64().ok_or_else(|| LxhError::InvalidArgument(format!("{key} required")))
+}
+
+fn require_u64(args: &Value, key: &str) -> Result<u64, LxhError> {
+    args[key].as_u64().ok_or_else(|| LxhError::InvalidArgument(format!("{key} required")))
+}
+
 pub async fn create_display(
     state: &DaemonState,
     session: &mut ClientSession,
@@ -66,9 +78,7 @@ pub async fn create_display(
 }
 
 pub async fn attach_display(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let display_id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let display_id = require_str(args, "display_id")?;
 
     let display = state.runtime.attach_display(display_id).await?;
     let id = display.id().to_string();
@@ -90,9 +100,7 @@ pub async fn destroy_display(
     session: &mut ClientSession,
     args: &Value,
 ) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
 
     let display = find_display(state, id).await?;
     display.lock().await.destroy().await?;
@@ -104,19 +112,14 @@ pub async fn destroy_display(
 }
 
 pub async fn detach_display(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
 
     let display = find_display(state, id).await?;
-    let mut d = display.lock().await;
-    if !d.is_external() {
+    if !display.lock().await.is_external() {
         return Err(LxhError::InvalidArgument(
             "cannot detach a harness display; use lxh_display_destroy".into(),
         ));
     }
-    d.detach().await?;
-    drop(d);
 
     state.displays.write().await.remove(id);
 
@@ -124,12 +127,8 @@ pub async fn detach_display(state: &DaemonState, args: &Value) -> Result<Value, 
 }
 
 pub async fn app_launch(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let command = args["command"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("command required".into()))?;
+    let id = require_str(args, "display_id")?;
+    let command = require_str(args, "command")?;
     let args_vec: Vec<String> = args["args"]
         .as_array()
         .map(|a| {
@@ -146,12 +145,8 @@ pub async fn app_launch(state: &DaemonState, args: &Value) -> Result<Value, LxhE
 }
 
 pub async fn app_terminate(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let pid = args["pid"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("pid required".into()))? as u32;
+    let id = require_str(args, "display_id")?;
+    let pid = require_u64(args, "pid")? as u32;
 
     let display = find_display(state, id).await?;
     display.lock().await.terminate_app(pid).await?;
@@ -159,15 +154,9 @@ pub async fn app_terminate(state: &DaemonState, args: &Value) -> Result<Value, L
 }
 
 pub async fn click(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let x = args["x"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("x required".into()))? as i32;
-    let y = args["y"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("y required".into()))? as i32;
+    let id = require_str(args, "display_id")?;
+    let x = require_i64(args, "x")? as i32;
+    let y = require_i64(args, "y")? as i32;
     let button = match args["button"].as_str().unwrap_or("left") {
         "right" => MouseButton::Right,
         "middle" => MouseButton::Middle,
@@ -181,15 +170,9 @@ pub async fn click(state: &DaemonState, args: &Value) -> Result<Value, LxhError>
 }
 
 pub async fn move_mouse(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let x = args["x"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("x required".into()))? as i32;
-    let y = args["y"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("y required".into()))? as i32;
+    let id = require_str(args, "display_id")?;
+    let x = require_i64(args, "x")? as i32;
+    let y = require_i64(args, "y")? as i32;
 
     let driver = find_driver(state, id).await?;
     driver.move_mouse(x, y).await?;
@@ -197,12 +180,8 @@ pub async fn move_mouse(state: &DaemonState, args: &Value) -> Result<Value, LxhE
 }
 
 pub async fn input_type(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let text = args["text"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("text required".into()))?;
+    let id = require_str(args, "display_id")?;
+    let text = require_str(args, "text")?;
 
     let driver = find_driver(state, id).await?;
     driver.type_text(text).await?;
@@ -210,12 +189,8 @@ pub async fn input_type(state: &DaemonState, args: &Value) -> Result<Value, LxhE
 }
 
 pub async fn input_key(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let key = args["key"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("key required".into()))?;
+    let id = require_str(args, "display_id")?;
+    let key = require_str(args, "key")?;
     let modifiers: Vec<String> = args["modifiers"]
         .as_array()
         .map(|a| {
@@ -232,9 +207,7 @@ pub async fn input_key(state: &DaemonState, args: &Value) -> Result<Value, LxhEr
 }
 
 pub async fn scroll(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
     let dx = args["dx"].as_i64().unwrap_or(0) as i32;
     let dy = args["dy"].as_i64().unwrap_or(0) as i32;
 
@@ -244,21 +217,11 @@ pub async fn scroll(state: &DaemonState, args: &Value) -> Result<Value, LxhError
 }
 
 pub async fn drag(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let x1 = args["x1"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("x1 required".into()))? as i32;
-    let y1 = args["y1"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("y1 required".into()))? as i32;
-    let x2 = args["x2"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("x2 required".into()))? as i32;
-    let y2 = args["y2"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("y2 required".into()))? as i32;
+    let id = require_str(args, "display_id")?;
+    let x1 = require_i64(args, "x1")? as i32;
+    let y1 = require_i64(args, "y1")? as i32;
+    let x2 = require_i64(args, "x2")? as i32;
+    let y2 = require_i64(args, "y2")? as i32;
 
     let driver = find_driver(state, id).await?;
     driver.drag(x1, y1, x2, y2).await?;
@@ -266,18 +229,14 @@ pub async fn drag(state: &DaemonState, args: &Value) -> Result<Value, LxhError> 
 }
 
 pub async fn get_cursor_position(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
     let driver = find_driver(state, id).await?;
     let (x, y) = driver.get_cursor_position().await?;
     Ok(json!({ "x": x, "y": y }))
 }
 
 pub async fn screenshot(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
     let driver = find_driver(state, id).await?;
     let shot = driver.screenshot().await?;
     Ok(json!({
@@ -287,12 +246,8 @@ pub async fn screenshot(state: &DaemonState, args: &Value) -> Result<Value, LxhE
 }
 
 pub async fn screenshot_window(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let window_id = args["window_id"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("window_id required".into()))?
+    let id = require_str(args, "display_id")?;
+    let window_id = require_u64(args, "window_id")?
         as u32;
 
     let driver = find_driver(state, id).await?;
@@ -304,12 +259,8 @@ pub async fn screenshot_window(state: &DaemonState, args: &Value) -> Result<Valu
 }
 
 pub async fn window_focus(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let window_id = args["window_id"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("window_id required".into()))?
+    let id = require_str(args, "display_id")?;
+    let window_id = require_u64(args, "window_id")?
         as u32;
 
     let driver = find_driver(state, id).await?;
@@ -318,25 +269,13 @@ pub async fn window_focus(state: &DaemonState, args: &Value) -> Result<Value, Lx
 }
 
 pub async fn window_set_frame(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let window_id = args["window_id"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("window_id required".into()))?
+    let id = require_str(args, "display_id")?;
+    let window_id = require_u64(args, "window_id")?
         as u32;
-    let x = args["x"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("x required".into()))? as i32;
-    let y = args["y"]
-        .as_i64()
-        .ok_or_else(|| LxhError::InvalidArgument("y required".into()))? as i32;
-    let width = args["width"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("width required".into()))? as u32;
-    let height = args["height"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("height required".into()))?
+    let x = require_i64(args, "x")? as i32;
+    let y = require_i64(args, "y")? as i32;
+    let width = require_u64(args, "width")? as u32;
+    let height = require_u64(args, "height")?
         as u32;
 
     let driver = find_driver(state, id).await?;
@@ -347,12 +286,8 @@ pub async fn window_set_frame(state: &DaemonState, args: &Value) -> Result<Value
 }
 
 pub async fn window_close(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let window_id = args["window_id"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("window_id required".into()))?
+    let id = require_str(args, "display_id")?;
+    let window_id = require_u64(args, "window_id")?
         as u32;
 
     let driver = find_driver(state, id).await?;
@@ -361,15 +296,9 @@ pub async fn window_close(state: &DaemonState, args: &Value) -> Result<Value, Lx
 }
 
 pub async fn click_element(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let pid = args["pid"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("pid required".into()))? as u32;
-    let index = args["index"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("index required".into()))?
+    let id = require_str(args, "display_id")?;
+    let pid = require_u64(args, "pid")? as u32;
+    let index = require_u64(args, "index")?
         as usize;
     let button = match args["button"].as_str().unwrap_or("left") {
         "right" => MouseButton::Right,
@@ -383,38 +312,28 @@ pub async fn click_element(state: &DaemonState, args: &Value) -> Result<Value, L
 }
 
 pub async fn wait(_state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let ms = args["ms"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("ms required".into()))?;
+    let ms = require_u64(args, "ms")?;
     tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
     Ok(json!({ "success": true }))
 }
 
 pub async fn clipboard_get(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
     let driver = find_driver(state, id).await?;
     let text = driver.clipboard_get().await?;
     Ok(json!({ "text": text }))
 }
 
 pub async fn clipboard_set(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let text = args["text"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("text required".into()))?;
+    let id = require_str(args, "display_id")?;
+    let text = require_str(args, "text")?;
     let driver = find_driver(state, id).await?;
     driver.clipboard_set(text).await?;
     Ok(json!({ "success": true }))
 }
 
 pub async fn display_info(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
     let display = find_display(state, id).await?;
     let info = display.lock().await.info();
     Ok(json!({
@@ -426,15 +345,9 @@ pub async fn display_info(state: &DaemonState, args: &Value) -> Result<Value, Lx
 }
 
 pub async fn get_window_state(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let pid = args["pid"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("pid required".into()))? as u32;
-    let window_id = args["window_id"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("window_id required".into()))?
+    let id = require_str(args, "display_id")?;
+    let pid = require_u64(args, "pid")? as u32;
+    let window_id = require_u64(args, "window_id")?
         as u32;
     let include_tree = args["include_tree"].as_bool().unwrap_or(true);
     let include_screenshot = args["include_screenshot"].as_bool().unwrap_or(false);
@@ -488,9 +401,7 @@ pub async fn get_window_state(state: &DaemonState, args: &Value) -> Result<Value
 }
 
 pub async fn get_desktop_overview(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
+    let id = require_str(args, "display_id")?;
     let driver = find_driver(state, id).await?;
     let overview = driver.get_desktop_overview().await?;
 
@@ -519,19 +430,11 @@ pub async fn get_desktop_overview(state: &DaemonState, args: &Value) -> Result<V
 }
 
 pub async fn set_value(state: &DaemonState, args: &Value) -> Result<Value, LxhError> {
-    let id = args["display_id"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("display_id required".into()))?;
-    let pid = args["pid"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("pid required".into()))? as u32;
-    let index = args["index"]
-        .as_u64()
-        .ok_or_else(|| LxhError::InvalidArgument("index required".into()))?
+    let id = require_str(args, "display_id")?;
+    let pid = require_u64(args, "pid")? as u32;
+    let index = require_u64(args, "index")?
         as usize;
-    let value = args["value"]
-        .as_str()
-        .ok_or_else(|| LxhError::InvalidArgument("value required".into()))?;
+    let value = require_str(args, "value")?;
 
     let driver = find_driver(state, id).await?;
     driver.set_value(pid, index, value).await?;

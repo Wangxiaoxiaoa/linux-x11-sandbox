@@ -22,7 +22,7 @@ impl Runtime {
     }
 
     pub async fn create_display(&self, config: DisplayConfig) -> Result<Display, LxhError> {
-        let num = self.next_display.fetch_add(1, Ordering::SeqCst);
+        let num = self.next_display.fetch_add(1, Ordering::Relaxed);
         let id = format!("d-{}", Uuid::new_v4().simple());
         let display = format!(":{}", num);
         Display::create(id, display, config).await
