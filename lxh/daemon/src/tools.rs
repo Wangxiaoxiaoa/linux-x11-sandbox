@@ -3,14 +3,14 @@ use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum BackendArg {
     Xvfb,
     Xephyr,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ButtonArg {
     Left,
@@ -18,7 +18,7 @@ pub enum ButtonArg {
     Middle,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct DisplayCreateArgs {
     #[serde(default)]
     pub backend: Option<BackendArg>,
@@ -26,12 +26,12 @@ pub struct DisplayCreateArgs {
     pub persistent: bool,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct DisplayIdArgs {
     pub display_id: String,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct AppLaunchArgs {
     pub display_id: String,
     pub command: String,
@@ -39,13 +39,13 @@ pub struct AppLaunchArgs {
     pub args: Vec<String>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct AppTerminateArgs {
     pub display_id: String,
     pub pid: u64,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetWindowStateArgs {
     pub display_id: String,
     pub pid: u64,
@@ -56,7 +56,7 @@ pub struct GetWindowStateArgs {
     pub include_screenshot: bool,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ClickArgs {
     pub display_id: String,
     pub x: i64,
@@ -67,20 +67,20 @@ pub struct ClickArgs {
     pub count: Option<u64>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct MoveArgs {
     pub display_id: String,
     pub x: i64,
     pub y: i64,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct TypeArgs {
     pub display_id: String,
     pub text: String,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct KeyArgs {
     pub display_id: String,
     pub key: String,
@@ -88,7 +88,7 @@ pub struct KeyArgs {
     pub modifiers: Vec<String>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ScrollArgs {
     pub display_id: String,
     #[serde(default)]
@@ -97,7 +97,7 @@ pub struct ScrollArgs {
     pub dy: i64,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct DragArgs {
     pub display_id: String,
     pub x1: i64,
@@ -106,13 +106,13 @@ pub struct DragArgs {
     pub y2: i64,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct WindowIdArgs {
     pub display_id: String,
     pub window_id: u64,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SetWindowFrameArgs {
     pub display_id: String,
     pub window_id: u64,
@@ -122,7 +122,7 @@ pub struct SetWindowFrameArgs {
     pub height: u64,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SetValueArgs {
     pub display_id: String,
     pub pid: u64,
@@ -130,7 +130,7 @@ pub struct SetValueArgs {
     pub value: String,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ClickElementArgs {
     pub display_id: String,
     pub pid: u64,
@@ -139,12 +139,12 @@ pub struct ClickElementArgs {
     pub button: Option<ButtonArg>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct WaitArgs {
     pub ms: u64,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ClipboardSetArgs {
     pub display_id: String,
     pub text: String,
@@ -301,4 +301,79 @@ pub fn tool_definitions() -> Vec<Value> {
 pub fn parse_args<T: for<'de> Deserialize<'de>>(args: &Value) -> Result<T, LxhError> {
     serde_json::from_value(args.clone())
         .map_err(|e| LxhError::InvalidArgument(format!("invalid arguments: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_definitions_has_expected_tools() {
+        let defs = tool_definitions();
+        assert_eq!(defs.len(), 26, "expected 26 tool definitions");
+
+        let names: Vec<&str> = defs
+            .iter()
+            .map(|d| d["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"lxh_display_create"));
+        assert!(names.contains(&"lxh_input_click"));
+        assert!(names.contains(&"lxh_capture_screenshot"));
+        assert!(names.contains(&"lxh_clipboard_get"));
+        assert!(names.contains(&"lxh_window_set_frame"));
+    }
+
+    #[test]
+    fn tool_definitions_have_schema() {
+        for def in tool_definitions() {
+            assert!(
+                def["name"].is_string(),
+                "tool name missing: {def}"
+            );
+            assert!(
+                def["description"].is_string(),
+                "tool description missing: {def}"
+            );
+            assert!(
+                def["inputSchema"].is_object(),
+                "tool inputSchema missing: {def}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_display_create_args() {
+        let args = json!({"backend": "xephyr", "persistent": true});
+        let parsed = parse_args::<DisplayCreateArgs>(&args).unwrap();
+        assert!(matches!(parsed.backend, Some(BackendArg::Xephyr)));
+        assert!(parsed.persistent);
+
+        let default = parse_args::<DisplayCreateArgs>(&json!({})).unwrap();
+        assert!(default.backend.is_none());
+        assert!(!default.persistent);
+    }
+
+    #[test]
+    fn parse_click_args_with_button() {
+        let args = json!({"display_id": "d-1", "x": 10, "y": 20, "button": "right", "count": 2});
+        let parsed = parse_args::<ClickArgs>(&args).unwrap();
+        assert_eq!(parsed.x, 10);
+        assert_eq!(parsed.y, 20);
+        assert!(matches!(parsed.button, Some(ButtonArg::Right)));
+        assert_eq!(parsed.count, Some(2));
+    }
+
+    #[test]
+    fn parse_invalid_backend_is_rejected() {
+        let args = json!({"backend": "invalid"});
+        let err = parse_args::<DisplayCreateArgs>(&args).unwrap_err();
+        assert!(matches!(err, LxhError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn parse_missing_required_field_is_rejected() {
+        let args = json!({"display_id": "d-1"}); // missing command
+        let err = parse_args::<AppLaunchArgs>(&args).unwrap_err();
+        assert!(matches!(err, LxhError::InvalidArgument(_)));
+    }
 }

@@ -134,7 +134,19 @@ async fn tools_list_returns_all_tools() {
     let mut conn = daemon.connect().await;
     let resp = conn.call_method("tools/list", json!({})).await;
     let tools = resp["result"]["tools"].as_array().expect("tools array");
-    assert!(tools.len() >= 24);
+    assert_eq!(tools.len(), 26, "expected 26 tools");
+
+    for tool in tools {
+        assert!(tool["name"].is_string(), "tool missing name: {tool}");
+        assert!(
+            tool["description"].is_string(),
+            "tool missing description: {tool}"
+        );
+        assert!(
+            tool["inputSchema"].is_object(),
+            "tool missing inputSchema: {tool}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -150,7 +162,10 @@ async fn create_and_destroy_harness_display() {
         .as_str()
         .expect("display")
         .to_string();
-    assert!(display_id.starts_with("d-"));
+    assert!(
+        display_id.starts_with("d-") && display_id.len() == 34,
+        "display_id should be d-<uuid>: {display_id}"
+    );
     assert!(display.starts_with(":"));
 
     let info = conn
@@ -175,6 +190,10 @@ async fn launch_app_and_take_screenshot() {
     let create = conn.call_tool("lxh_display_create", json!({})).await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
     let display = create["result"]["display"].as_str().unwrap().to_string();
+    assert!(
+        display_id.starts_with("d-") && display_id.len() == 34,
+        "display_id should be d-<uuid>: {display_id}"
+    );
     assert!(display.starts_with(":"));
 
     let launch = conn

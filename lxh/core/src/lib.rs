@@ -34,6 +34,20 @@ pub mod x11 {
     pub fn root_window(conn: &RustConnection, screen: usize) -> u32 {
         conn.setup().roots[screen].root
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn open_bad_display_returns_display_unavailable() {
+            let result = open_connection(":99999");
+            assert!(
+                matches!(result, Err(LxhError::DisplayUnavailable(_))),
+                "expected DisplayUnavailable, got {result:?}"
+            );
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
