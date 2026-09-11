@@ -27,4 +27,5 @@ lxh-action = { path = "lxh/action" }
 lxh-state = { path = "lxh/state" }
 lxh-driver = { path = "lxh/driver" }
 lxh-runtime = { path = "lxh/runtime" }
+lxh-preview = { path = "lxh/preview" }
 lxh-daemon = { path = "lxh/daemon" }

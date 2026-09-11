@@ -24,6 +24,7 @@ impl DaemonServer {
                 runtime,
                 displays: Arc::new(RwLock::new(HashMap::new())),
                 drivers: Arc::new(RwLock::new(HashMap::new())),
+                previews: Arc::new(RwLock::new(HashMap::new())),
             }),
             socket_path,
         }
@@ -42,6 +43,7 @@ impl DaemonServer {
             let state = Arc::clone(&self.state);
             tokio::spawn(async move {
                 let mut session = ClientSession::new();
+                session.client_name = peer_name(&stream);
                 let state2 = Arc::clone(&state);
                 if let Err(e) = handle_client(state, &mut session, stream).await {
                     eprintln!("client handler error: {e}");
@@ -172,9 +174,28 @@ async fn dispatch_tool_call(
 
 async fn cleanup_session(state: Arc<DaemonState>, session: &mut ClientSession) {
     let mut displays = state.displays.write().await;
+    let mut previews = state.previews.write().await;
     for id in session.owned_displays.drain() {
+        previews.remove(&id);
         if let Some(display) = displays.remove(&id) {
             let _ = display.lock().await.destroy().await;
         }
     }
+}
+
+fn peer_name(stream: &UnixStream) -> Option<String> {
+    let cred = stream.peer_cred().ok()?;
+    let pid = cred.pid()?;
+    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+    let name = comm.trim();
+    let friendly = match name {
+        "claude" | "claude-code" => "Claude",
+        "codex" => "Codex",
+        "kimi" | "kimi-code" => "Kimi",
+        "qwen" => "Qwen",
+        "opencode" => "OpenCode",
+        "pi" => "Pi",
+        _ => return None,
+    };
+    Some(friendly.to_string())
 }

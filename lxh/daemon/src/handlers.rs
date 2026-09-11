@@ -9,6 +9,7 @@ use crate::tools::{
 };
 use lxh_core::{Driver, LxhError, MouseButton};
 use lxh_driver::DefaultDriver;
+use lxh_preview::PreviewWindow;
 use lxh_runtime::{Backend, Display, DisplayConfig, Runtime};
 use serde_json::{json, Value};
 use tokio::sync::{Mutex, RwLock};
@@ -17,10 +18,12 @@ pub struct DaemonState {
     pub runtime: Arc<Runtime>,
     pub displays: Arc<RwLock<HashMap<String, Arc<Mutex<Display>>>>>,
     pub drivers: Arc<RwLock<HashMap<String, Arc<dyn Driver>>>>,
+    pub previews: Arc<RwLock<HashMap<String, PreviewWindow>>>,
 }
 
 pub struct ClientSession {
     pub owned_displays: HashSet<String>,
+    pub client_name: Option<String>,
 }
 
 impl Default for ClientSession {
@@ -33,6 +36,7 @@ impl ClientSession {
     pub fn new() -> Self {
         Self {
             owned_displays: HashSet::new(),
+            client_name: None,
         }
     }
 }
@@ -52,17 +56,36 @@ pub async fn create_display(
 ) -> Result<Value, LxhError> {
     let args: DisplayCreateArgs = parse_args(args)?;
     let mut config = DisplayConfig::default();
+    let preview = args.preview.unwrap_or(true);
     if let Some(backend) = args.backend {
         config.backend = match backend {
             crate::tools::BackendArg::Xvfb => Backend::Xvfb,
             crate::tools::BackendArg::Xephyr => Backend::Xephyr,
         };
+    } else if preview {
+        // Preview requires a separate harness X server; default to Xvfb so
+        // closing the preview window does not kill the display.
+        config.backend = Backend::Xvfb;
     }
 
+    let is_xvfb = matches!(config.backend, Backend::Xvfb);
     let display = state.runtime.create_display(config).await?;
     let id = display.id().to_string();
     let display_str = display.display().to_string();
     let driver = Arc::new(DefaultDriver::new(&display_str)?);
+
+    if preview && is_xvfb {
+        let title = format!(
+            "LXH {}",
+            args.name
+                .clone()
+                .or_else(|| session.client_name.clone())
+                .unwrap_or_else(|| "Agent".to_string())
+        );
+        if let Ok(preview) = PreviewWindow::start(&display_str, &title, std::time::Duration::from_millis(100)) {
+            state.previews.write().await.insert(id.clone(), preview);
+        }
+    }
 
     state
         .displays
@@ -103,6 +126,7 @@ pub async fn destroy_display(
     let display = find_display(state, &args.display_id).await?;
     display.lock().await.destroy().await?;
 
+    state.previews.write().await.remove(&args.display_id);
     state.displays.write().await.remove(&args.display_id);
     state.drivers.write().await.remove(&args.display_id);
     session.owned_displays.remove(&args.display_id);

@@ -53,6 +53,10 @@ impl Connection {
         self.send(&req).await
     }
 
+    async fn create_display(&mut self) -> Value {
+        self.call_tool("lxh_display_create", json!({"preview": false})).await
+    }
+
     async fn send(&mut self, req: &Value) -> Value {
         let line = req.to_string() + "\n";
         self.writer.write_all(line.as_bytes()).await.expect("write");
@@ -153,7 +157,7 @@ async fn tools_list_returns_all_tools() {
 async fn create_and_destroy_harness_display() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"]
         .as_str()
         .expect("display_id")
@@ -187,7 +191,7 @@ async fn create_and_destroy_harness_display() {
 async fn launch_app_and_take_screenshot() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
     let display = create["result"]["display"].as_str().unwrap().to_string();
     assert!(
@@ -224,7 +228,7 @@ async fn launch_app_and_take_screenshot() {
 async fn app_terminate_kills_process() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
     let launch = conn
@@ -270,7 +274,7 @@ async fn app_terminate_kills_process() {
 async fn input_move_and_get_cursor_position() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
     let move_resp = conn
@@ -300,7 +304,7 @@ async fn input_move_and_get_cursor_position() {
 async fn clipboard_roundtrip() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
     let set = conn
@@ -341,7 +345,7 @@ async fn invalid_display_id_returns_error() {
 async fn invalid_tool_arguments_returns_error() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
     let resp = conn
@@ -357,7 +361,7 @@ async fn invalid_tool_arguments_returns_error() {
 async fn display_info_returns_resolution() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
     let info = conn
@@ -404,7 +408,7 @@ async fn xephyr_backend_when_available() {
 async fn desktop_overview_lists_launched_app() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
     let launch = conn
@@ -483,7 +487,7 @@ fn window_size(display: &str, window_id: u64) -> Option<(u64, u64)> {
 async fn window_lifecycle_focus_set_frame_close() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
     let display = create["result"]["display"].as_str().unwrap().to_string();
 
@@ -573,7 +577,7 @@ async fn persistent_display_survives_client_disconnect() {
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
     let create = conn
-        .call_tool("lxh_display_create", json!({"persistent": true}))
+        .call_tool("lxh_display_create", json!({"persistent": true, "preview": false}))
         .await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
 
@@ -626,7 +630,7 @@ async fn atspi_interaction_with_gtk_app() {
 
     let daemon = DaemonGuard::new().await;
     let mut conn = daemon.connect().await;
-    let create = conn.call_tool("lxh_display_create", json!({})).await;
+    let create = conn.create_display().await;
     let display_id = create["result"]["display_id"].as_str().unwrap().to_string();
     let display = create["result"]["display"].as_str().unwrap().to_string();
 
