@@ -7,95 +7,71 @@ compatibility: Linux with xvfb and openbox installed.
 
 # linux-x11-harness
 
-Isolated X11 displays with a built-in automation driver, exposed through a daemon + MCP stdio proxy.
+Use this skill when you need to control Linux GUI applications without touching the user's real desktop.
 
 ## When to use
 
-- Launch a GUI application in a clean environment.
-- Take screenshots for verification.
-- Send mouse/keyboard input without touching the host desktop.
-- Read the AT-SPI accessibility tree or perform actions on UI elements.
+- Launch a GUI app in a clean, isolated X11 display.
+- Take screenshots to verify UI state.
+- Send mouse, keyboard, or clipboard input to a GUI app.
+- Read the AT-SPI accessibility tree or click UI elements programmatically.
 
-## Setup
+## Lifecycle
 
-```bash
-cd ../../../
-cargo build --release
-```
+Always follow this order:
 
-Requires `xvfb` and `openbox`.
+1. Create a display with `lxh_display_create`.
+2. Launch the target app with `lxh_app_launch`.
+3. Wait briefly if the app needs time to start.
+4. Interact: screenshot, click, type, read window state, etc.
+5. Terminate the app with `lxh_app_terminate`.
+6. Destroy the display with `lxh_display_destroy`.
 
-## Start the MCP server
+If you only need a headless display, use the default backend. If the user wants to watch, set `backend` to `xephyr`.
 
-```bash
-cd ../../../
-./target/release/linux-x11-harness serve   # start daemon
-./target/release/linux-x11-harness mcp     # stdio proxy (auto-starts daemon)
-```
+## Key tools
 
-### Isolated daemon instances
+### Display lifecycle
 
-By default, all agents share one daemon and each MCP connection gets its own session. Displays created by one session are cleaned up when that session disconnects.
+- `lxh_display_create` — create an isolated display. Returns `display_id` and `display`.
+- `lxh_display_destroy` — destroy a display and everything inside it.
+- `lxh_display_info` — get resolution and app count.
 
-If you need a fully separate daemon process (for stronger isolation, independent lifecycle, or a dedicated environment), use `--socket`:
+### Apps
 
-```bash
-./target/release/linux-x11-harness mcp --socket /tmp/lxh-agent-<id>.sock
-```
+- `lxh_app_launch` — launch a command inside a display. Returns `pid`.
+- `lxh_app_terminate` — kill an app by `pid`.
 
-The displays for that socket live only in that daemon instance and are cleaned up when the connection ends.
+### Input
 
-## Core workflow
+- `lxh_input_click` — click at `(x, y)`.
+- `lxh_input_move` — move the cursor.
+- `lxh_input_type` — type text.
+- `lxh_input_key` — press a key, with optional modifiers.
+- `lxh_input_scroll` — scroll.
+- `lxh_input_drag` — drag from `(x1, y1)` to `(x2, y2)`.
 
-1. Initialize the MCP connection.
-2. Create a display with `lxh_display_create` (default `xvfb`, use `{"backend": "xephyr"}` for visible).
-3. Launch an app with `lxh_app_launch`.
-4. Interact: click, type, screenshot, read AT-SPI tree.
-5. Terminate apps and destroy the display.
+### State and capture
 
-## Tool reference
+- `lxh_capture_screenshot` — full display screenshot as base64 PNG.
+- `lxh_get_desktop_overview` — list processes and windows.
+- `lxh_get_window_state` — detailed window info plus optional AT-SPI tree and screenshot.
+- `lxh_input_get_cursor_position` — current mouse position.
 
-| Tool | Purpose |
-|------|---------|
-| `lxh_display_create` | Args: `backend` (`xvfb`/`xephyr`), optional `persistent`. Returns `display_id`, `display`. |
-| `lxh_display_attach` | Args: `display_id` (e.g. `:0`). Attach to an existing display. |
-| `lxh_display_detach` | Args: `display_id`. Detach without destroying. |
-| `lxh_display_destroy` | Args: `display_id`. |
-| `lxh_display_info` | Args: `display_id`. Returns `display`, `width`, `height`, `app_count`. |
-| `lxh_app_launch` | Args: `display_id`, `command`, `args` (array). Returns `pid`. |
-| `lxh_app_terminate` | Args: `display_id`, `pid`. |
-| `lxh_input_click` | Args: `display_id`, `x`, `y`, optional `button` (`left`/`right`/`middle`), optional `count`. |
-| `lxh_input_move` | Args: `display_id`, `x`, `y`. |
-| `lxh_input_scroll` | Args: `display_id`, `dx`, `dy`. |
-| `lxh_input_drag` | Args: `display_id`, `x1`, `y1`, `x2`, `y2`. |
-| `lxh_input_get_cursor_position` | Args: `display_id`. Returns `x`, `y`. |
-| `lxh_input_type` | Args: `display_id`, `text`. |
-| `lxh_input_key` | Args: `display_id`, `key`, `modifiers` (array). |
-| `lxh_capture_screenshot` | Args: `display_id`. Returns base64 PNG. |
-| `lxh_capture_window` | Args: `display_id`, `window_id`. Returns base64 PNG. |
-| `lxh_window_focus` | Args: `display_id`, `window_id`. |
-| `lxh_window_set_frame` | Args: `display_id`, `window_id`, `x`, `y`, `width`, `height`. |
-| `lxh_window_close` | Args: `display_id`, `window_id`. |
-| `lxh_clipboard_get` | Args: `display_id`. Returns `text`. |
-| `lxh_clipboard_set` | Args: `display_id`, `text`. |
-| `lxh_get_desktop_overview` | Args: `display_id`. Returns `processes` (`pid`, `name`) and `windows` (`window_id`, `pid`, `title`, `bounds`). |
-| `lxh_get_window_state` | Args: `display_id`, `pid`, `window_id`, `include_tree` (default true), `include_screenshot` (default false). Returns `window_id`, `title`, `app_name`, `bounds`, optional `tree`, optional `screenshot` (base64 PNG). |
-| `lxh_set_value` | Args: `display_id`, `pid`, `index`, `value`. |
-| `lxh_click_element` | Args: `display_id`, `pid`, `index`, optional `button` (`left`/`right`/`middle`). |
-| `lxh_wait` | Args: `ms`. |
+### Accessibility
 
-## Example
+- `lxh_click_element` — click an AT-SPI element by `pid` and `index`.
+- `lxh_set_value` — set the value of an editable AT-SPI element.
 
-```json
-{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"lxh_display_create","arguments":{}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"lxh_app_launch","arguments":{"display_id":"d-99","command":"xterm","args":[]}}}
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"lxh_capture_screenshot","arguments":{"display_id":"d-99"}}}
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"lxh_display_destroy","arguments":{"display_id":"d-99"}}}
+## Common workflow
+
+```text
+lxh_display_create -> lxh_app_launch -> lxh_wait -> lxh_capture_screenshot -> ... -> lxh_app_terminate -> lxh_display_destroy
 ```
 
 ## Tips
 
-- Always destroy displays when done.
-- Click inside a window before typing if the target needs focus.
-- For AT-SPI, launch apps with their own accessibility flags if needed.
+- Always destroy the display when done to free resources.
+- Click inside a window before typing if it needs focus.
+- Use `lxh_get_desktop_overview` to find window IDs and pids.
+- Use `lxh_get_window_state` with `include_tree: true` to inspect UI elements.
