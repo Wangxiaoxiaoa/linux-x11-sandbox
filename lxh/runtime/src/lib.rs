@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use lxh_core::LxhError;
+use uuid::Uuid;
 
 pub mod display;
 pub mod process;
@@ -22,7 +23,7 @@ impl Runtime {
 
     pub async fn create_display(&self, config: DisplayConfig) -> Result<Display, LxhError> {
         let num = self.next_display.fetch_add(1, Ordering::SeqCst);
-        let id = format!("d-{}", num);
+        let id = format!("d-{}", Uuid::new_v4().simple());
         let display = format!(":{}", num);
         Display::create(id, display, config).await
     }
