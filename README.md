@@ -15,7 +15,7 @@
 
 ## What is this?
 
-`linux-x11-harness` creates isolated X11 displays and lets AI agents control GUI applications through an MCP server. Each display gets its own X server, window manager, and application process group, so agents can click, type, capture screenshots, and read accessibility trees without touching the host desktop.
+`linux-x11-harness` creates isolated X11 displays and lets AI agents control GUI applications. Each display gets its own X server, window manager, and application process group, so agents can click, type, capture screenshots, and read accessibility trees without touching the host desktop.
 
 Typical uses:
 
@@ -23,45 +23,41 @@ Typical uses:
 - Run end-to-end tests that need real input, focus, and screenshots.
 - Capture accessibility trees or screen recordings for verification.
 
-## Supported agents
+## Quick start
 
-Install once and use with any MCP-compatible agent. The setup command registers the server for:
-
-- [Claude Code](https://claude.ai/code)
-- [Codex](https://github.com/openai/codex)
-- [Kimi Code](https://kimi-code.moonshot.cn/)
-- [Qwen](https://qwen.aliyun.com/)
-- [OpenCode](https://opencode.ai/)
-- [Pi](https://pi.ai/)
-
-## Install
+Install and register with your agents in one step:
 
 ```bash
 pip install linux-x11-harness
 linux-x11-harness setup
 ```
 
+After setup, open your agent and start asking it to use GUI apps. The agent will launch the harness automatically when needed.
+
 Requirements: Python 3.10+, Rust toolchain, Linux with `xvfb` and `openbox`.
 
-## Quick start
+## Supported agents
 
-Start the daemon:
+| Agent | Integration |
+|---|---|
+| [Claude Code](https://claude.ai/code) | MCP server |
+| [Codex](https://github.com/openai/codex) | MCP server |
+| [Qwen](https://qwen.aliyun.com/) | MCP server |
+| [OpenCode](https://opencode.ai/) | MCP server |
+| [Kimi Code](https://kimi-code.moonshot.cn/) | Agent skill |
+| [Pi](https://pi.ai/) | Agent skill |
+
+Any other MCP-compatible agent can connect manually using `linux-x11-harness mcp`.
+
+## Manual commands
+
+You normally do not need to run these. They are useful for debugging or running without an agent:
 
 ```bash
-linux-x11-harness serve
-```
-
-Run the MCP stdio proxy (most agents call this automatically):
-
-```bash
-linux-x11-harness mcp
-```
-
-Other commands:
-
-```bash
-linux-x11-harness status
-linux-x11-harness stop
+linux-x11-harness serve   # start the daemon
+linux-x11-harness mcp     # run the MCP stdio proxy
+linux-x11-harness status  # check daemon status
+linux-x11-harness stop    # stop the daemon
 ```
 
 ## Documentation
