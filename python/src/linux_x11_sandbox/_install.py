@@ -1,8 +1,7 @@
 """One-click registration of skill and MCP server with common agents."""
 
-import json
-import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -21,6 +20,21 @@ def _warn(msg: str) -> None:
     print(f"\033[1;33m[warn]\033[0m {msg}", file=sys.stderr)
 
 
+def _err(msg: str) -> None:
+    print(f"\033[0;31m[error]\033[0m {msg}", file=sys.stderr)
+
+
+def _resolve_command() -> str:
+    """Return the command agents should invoke to start the MCP proxy."""
+    if cmd := shutil.which("linux-x11-sandbox"):
+        return cmd
+    binary = get_binary_path()
+    if binary.exists():
+        return str(binary)
+    _err("linux-x11-sandbox not found in PATH and bundled binary is missing.")
+    sys.exit(1)
+
+
 def _link_skill(target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     link = target_dir / "linux-x11-sandbox"
@@ -30,79 +44,114 @@ def _link_skill(target_dir: Path) -> None:
     _log(f"Linked skill -> {link}")
 
 
-def _update_json_config(path: Path, key: str, value: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if path.exists():
-        try:
-            data = json.loads(path.read_text())
-        except json.JSONDecodeError:
-            _warn(f"{path} is malformed; replacing.")
-    data.setdefault("mcpServers", {})
-    data["mcpServers"][key] = {"command": value}
-    path.write_text(json.dumps(data, indent=2))
-    _log(f"Updated {path}")
-
-
-def _register_skills(project_root: Path) -> None:
-    _log("Registering skill for detected agents...")
-
-    home = Path.home()
-
-    if (home / ".pi").exists() or (project_root / ".pi").exists():
-        _link_skill(home / ".pi" / "agent" / "skills")
-    else:
-        _info(
-            "pi not detected. To register manually: "
-            f"ln -s {get_skill_path()} ~/.pi/agent/skills/linux-x11-sandbox"
-        )
-
-    if shutil.which("claude") or (project_root / ".claude").exists():
-        _link_skill(project_root / ".claude" / "skills")
-    else:
-        _info(
-            "Claude Code not detected. To register manually: "
-            f"ln -s {get_skill_path()} .claude/skills/linux-x11-sandbox"
-        )
-
-    if shutil.which("codex") or (home / ".codex").exists():
-        _link_skill(home / ".codex" / "skills")
-    else:
-        _info(
-            "Codex not detected. To register manually: "
-            f"ln -s {get_skill_path()} ~/.codex/skills/linux-x11-sandbox"
-        )
-
-    _link_skill(home / ".agents" / "skills")
-
-
-def _register_mcp_servers() -> None:
-    _log("Registering MCP server for detected agents...")
-
-    binary = str(get_binary_path())
-    home = Path.home()
-
-    claude_config = home / ".config" / "claude" / "claude_desktop_config.json"
-    if (home / ".config" / "claude").exists() or claude_config.exists():
-        _update_json_config(claude_config, "linux-x11-sandbox", binary)
-    else:
-        _info(f"Claude Desktop not detected. Config path: {claude_config}")
-
-    cursor_config = home / ".cursor" / "mcp.json"
-    if (home / ".cursor").exists() or cursor_config.exists():
-        _update_json_config(cursor_config, "linux-x11-sandbox", binary)
-    else:
-        _info(f"Cursor not detected. Config path: {cursor_config}")
-
-    _info(
-        f"For other agents, add this MCP server: {{ \"command\": \"{binary}\" }}"
+def _run(cmd: list[str], check: bool = False) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=check,
     )
+
+
+def _register_claude(command: str) -> None:
+    if not shutil.which("claude"):
+        _info("claude not found; skipping")
+        return
+
+    _link_skill(Path.home() / ".claude" / "skills")
+
+    # Remove any existing registration to keep the config idempotent.
+    _run(["claude", "mcp", "remove", "linux-x11-sandbox"])
+    result = _run(["claude", "mcp", "add", "linux-x11-sandbox", "--", command])
+    if result.returncode == 0:
+        _log("Registered MCP server for Claude Code")
+    else:
+        _err(f"Failed to register Claude MCP server: {result.stderr}")
+
+
+def _register_codex(command: str) -> None:
+    if not shutil.which("codex"):
+        _info("codex not found; skipping")
+        return
+
+    _link_skill(Path.home() / ".codex" / "skills")
+
+    _run(["codex", "mcp", "remove", "linux-x11-sandbox"])
+    result = _run(["codex", "mcp", "add", "linux-x11-sandbox", "--", command])
+    if result.returncode == 0:
+        _log("Registered MCP server for Codex")
+    else:
+        _err(f"Failed to register Codex MCP server: {result.stderr}")
+
+
+def _register_kimi() -> None:
+    if not shutil.which("kimi"):
+        _info("kimi not found; skipping")
+        return
+
+    _link_skill(Path.home() / ".kimi-code" / "skills")
+    _info("Kimi Code skill linked (MCP servers are not yet supported by kimi-code)")
+
+
+def _register_qwen(command: str) -> None:
+    if not shutil.which("qwen"):
+        _info("qwen not found; skipping")
+        return
+
+    # Qwen stores project-scoped MCP settings in <cwd>/.qwen/settings.json.
+    _run(["qwen", "mcp", "remove", "linux-x11-sandbox"])
+    result = _run(["qwen", "mcp", "add", "linux-x11-sandbox", command])
+    if result.returncode == 0:
+        _log("Registered MCP server for Qwen")
+    else:
+        _err(f"Failed to register Qwen MCP server: {result.stderr}")
+
+
+def _register_opencode(command: str) -> None:
+    if not shutil.which("opencode"):
+        _info("opencode not found; skipping")
+        return
+
+    # OpenCode has no CLI remove command; edit config directly to stay idempotent.
+    config_path = Path.home() / ".config" / "opencode" / "opencode.json"
+    if config_path.exists():
+        import json
+
+        try:
+            data = json.loads(config_path.read_text())
+            if "mcp" in data and "linux-x11-sandbox" in data["mcp"]:
+                del data["mcp"]["linux-x11-sandbox"]
+                config_path.write_text(json.dumps(data, indent=2))
+        except (json.JSONDecodeError, OSError) as e:
+            _warn(f"Could not clean up old OpenCode MCP entry: {e}")
+
+    result = _run(["opencode", "mcp", "add", "linux-x11-sandbox", "--", command])
+    if result.returncode == 0:
+        _log("Registered MCP server for OpenCode")
+    else:
+        _err(f"Failed to register OpenCode MCP server: {result.stderr}")
+
+
+def _register_pi() -> None:
+    home = Path.home()
+    if not shutil.which("pi") and not (home / ".pi").exists():
+        _info("pi not found; skipping")
+        return
+
+    _link_skill(home / ".pi" / "agent" / "skills")
 
 
 def setup_agents() -> None:
     """Detect common agents and register the skill + MCP server."""
-    project_root = Path.cwd()
-    _register_skills(project_root)
-    _register_mcp_servers()
+    command = _resolve_command()
+    _log(f"Using MCP command: {command}")
+
+    _register_claude(command)
+    _register_codex(command)
+    _register_kimi()
+    _register_qwen(command)
+    _register_opencode(command)
+    _register_pi()
+
     print()
     _log("Setup complete. Restart your agent to use linux-x11-sandbox.")
